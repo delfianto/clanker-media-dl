@@ -7,6 +7,7 @@ import type {
 import type { DownloadJob } from "../types/jobs";
 import { crossOriginFetchText } from "./fetcher";
 import { appendLog } from "./logger";
+import { getModel } from "../hosts/index";
 
 const JOBS_KEY = "downloadJobs";
 
@@ -93,19 +94,9 @@ function broadcastProgress(job: DownloadJob): void {
 
 // ── URL resolution ───────────────────────────────────────────────────────────
 
-async function signBunkrUrl(jsCDN: string, jobId: string): Promise<string> {
-  const parsed = new URL(jsCDN);
-  const signUrl = `https://glb-apisign.cdn.cr/sign?path=${encodeURIComponent(parsed.pathname)}`;
-  void appendLog("debug", `Signing bunkr URL: ${jsCDN}`, jobId);
-  const { text } = await fetchWithRetry(signUrl, jobId, "sign API");
-  const json = JSON.parse(text) as { token?: string; ex?: string };
-  if (!json.token || !json.ex) throw new Error("bunkr sign API returned unexpected shape");
-  return `${jsCDN}?token=${json.token}&ex=${json.ex}`;
-}
-
 // Retry transient HTTP failures (502, 503, 504, network errors) with backoff.
-// Both the viewer page fetch and the sign API can hit these under load —
-// bunkr's infrastructure throttles aggressively.
+// Both the viewer page fetch and hoster-specific resolveUrl hooks (e.g. bunkr's
+// sign API) can hit these under load.
 async function fetchWithRetry(
   url: string,
   jobId: string,
@@ -124,7 +115,6 @@ async function fetchWithRetry(
     } catch (err) {
       lastErr = err;
       const msg = String(err);
-      // Retry on HTTP 5xx and network errors; bail on 4xx (permanent).
       const transient = /HTTP\s+5\d\d/.test(msg) || /Failed to fetch|NetworkError|abort/i.test(msg);
       if (attempt < maxRetries && transient) continue;
       break;
@@ -133,57 +123,61 @@ async function fetchWithRetry(
   throw lastErr;
 }
 
-async function resolveItem(item: GalleryJobItem, jobId: string): Promise<string> {
+// Resolve a gallery item to a downloadable URL. The flow:
+//   1. For "resolved" items, the URL is already known.
+//   2. For "resolve-viewer" items, fetch the viewer page HTML.
+//   3. If the model provides extractFromViewer, call it (owns all hoster-specific
+//      parsing: regex, <source> fallbacks, maintenance detection, filename).
+//   4. Otherwise, use the item's regex extractor (generic fallback).
+//   5. If the model provides resolveUrl, call it (e.g. bunkr's sign API).
+//   6. Otherwise, return the raw URL directly.
+async function resolveItem(item: GalleryJobItem, jobId: string, hosterId: string): Promise<string> {
   if (item.kind === "resolved") return item.imageUrl;
+
+  const model = getModel(hosterId as never);
+  const gc = model?.galleryConfig;
 
   void appendLog("debug", `Fetching viewer: ${item.viewerUrl}`, jobId);
   const { text } = await fetchWithRetry(item.viewerUrl, jobId, "viewer page");
-  const match = new RegExp(item.extractor).exec(text);
-  let rawUrl = match?.[1];
-  if (rawUrl) {
-    rawUrl = rawUrl.replace(/\\/g, "");
+
+  let rawUrl: string | undefined;
+  let filenameOverride: string | undefined;
+
+  // Prefer the model's custom extractor (e.g. bunkr: jsCDN + <source> + maintenance).
+  if (gc?.extractFromViewer) {
+    const result = gc.extractFromViewer(text);
+    if (result) {
+      rawUrl = result.url.replace(/\\/g, "");
+      filenameOverride = result.filename;
+    }
   }
 
-  // Fallback: video/audio pages don't use var jsCDN — try <source src="...">,
-  // <video src="...">, or <audio src="..."> patterns.
+  // Generic fallback: regex extractor on the HTML.
   if (!rawUrl) {
-    const sourceMatch =
-      /<source\s+[^>]*src=["']([^"']+)["']/i.exec(text) ??
-      /<video\s+[^>]*src=["']([^"']+)["']/i.exec(text) ??
-      /<audio\s+[^>]*src=["']([^"']+)["']/i.exec(text);
-    if (sourceMatch?.[1]) {
-      rawUrl = sourceMatch[1].replace(/\\/g, "");
-      void appendLog("debug", `Primary extractor missed, found media src: ${rawUrl}`, jobId);
+    const match = new RegExp(item.extractor).exec(text);
+    if (match?.[1]) {
+      rawUrl = match[1].replace(/\\/g, "");
     }
   }
 
   if (!rawUrl) {
-    // Check for bunkr's maintenance page — the CDN URL is intentionally
-    // absent when the hosting server is down for maintenance.
-    if (/Server under maintenance/i.test(text)) {
-      void appendLog(
-        "error",
-        `Bunkr server under maintenance for ${item.viewerUrl} — try again later`,
-        jobId,
-      );
-      throw new Error("bunkr server under maintenance");
-    }
-    // Log a snippet of the fetched HTML to help debug extractor mismatches.
     void appendLog(
       "error",
-      `Extractor "${item.extractor}" found no match in ${item.viewerUrl} (HTML snippet: ${text.slice(0, 300).replace(/\s+/g, " ")})`,
+      `Extractor found no match in ${item.viewerUrl} (HTML snippet: ${text.slice(0, 300).replace(/\s+/g, " ")})`,
       jobId,
     );
     throw new Error(`extractor found no match in ${item.viewerUrl}`);
   }
 
-  // Parse filename from viewer page if possible.
-  const nameMatch = /<span[^>]+class="name text-ellipsis"[^>]*>([^<]+)<\/span>/i.exec(text);
-  if (nameMatch && nameMatch[1]) {
-    item.filename = nameMatch[1].trim();
+  if (filenameOverride) {
+    item.filename = filenameOverride;
   }
 
-  if (item.needsSign) return signBunkrUrl(rawUrl, jobId);
+  // If the model provides a URL resolver (e.g. bunkr's sign API), call it.
+  if (gc?.resolveUrl) {
+    void appendLog("debug", `Resolving URL: ${rawUrl}`, jobId);
+    return gc.resolveUrl(rawUrl);
+  }
   return rawUrl;
 }
 
@@ -248,7 +242,7 @@ async function runQueue(
 
       let imageUrl: string;
       try {
-        imageUrl = await resolveItem(item, job.jobId);
+        imageUrl = await resolveItem(item, job.jobId, job.hosterId);
       } catch (resolveErr) {
         void appendLog(
           "error",
