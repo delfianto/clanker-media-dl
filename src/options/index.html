@@ -40,29 +40,36 @@
     </div>
 
     <div id="view-downloads" hidden>
-      <div class="sub-tab-bar" role="tablist">
-        <button class="sub-tab-btn active" id="stab-settings" role="tab" aria-selected="true">
-          Settings
-        </button>
-        <button class="sub-tab-btn" id="stab-history" role="tab" aria-selected="false">
-          History
-        </button>
-        <button class="sub-tab-btn" id="stab-logs" role="tab" aria-selected="false">Logs</button>
-      </div>
-      <div class="downloads-view">
-        <div id="dl-view-settings">
-          <div id="dl-settings"></div>
-        </div>
-        <div id="dl-view-history" hidden>
-          <div id="dl-jobs"></div>
-        </div>
-        <div id="dl-view-logs" hidden>
-          <div class="logs-toolbar">
-            <span id="log-count" class="log-count"></span>
-            <button id="btn-clear-logs" class="reset-btn">Clear</button>
+      <div class="layout">
+        <nav class="sidebar">
+          <h2>Downloads</h2>
+          <ul id="dl-nav">
+            <li class="hoster-item active" id="stab-settings">
+              <span class="name">Settings</span>
+            </li>
+            <li class="hoster-item" id="stab-history">
+              <span class="name">History</span>
+            </li>
+            <li class="hoster-item" id="stab-logs">
+              <span class="name">Logs</span>
+            </li>
+          </ul>
+        </nav>
+        <main class="panel" id="dl-panel">
+          <div id="dl-view-settings">
+            <div id="dl-settings"></div>
           </div>
-          <div id="dl-logs" class="log-list"></div>
-        </div>
+          <div id="dl-view-history" hidden>
+            <div id="dl-jobs"></div>
+          </div>
+          <div id="dl-view-logs" hidden>
+            <div class="logs-toolbar">
+              <span id="log-count" class="log-count"></span>
+              <button id="btn-clear-logs" class="reset-btn">Clear</button>
+            </div>
+            <div id="dl-logs" class="log-list"></div>
+          </div>
+        </main>
       </div>
     </div>
 
