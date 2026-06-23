@@ -19,8 +19,8 @@ export type Settings = {
   // Gallery download settings. Required (not optional) so storage.local.get(DEFAULT_SETTINGS)
   // always fills them — no undefined footgun with exactOptionalPropertyTypes.
   maxParallel: number; // 1–10; concurrent downloads per gallery job
-  subfolderPrefix: string; // relative subfolder prefix inside browser downloads dir; "" = none
-  autoFolderPerAlbum: boolean; // if true: downloads/{prefix}/{albumId}/file.ext
+  downloadDirectory: string; // relative download directory inside browser downloads dir; "" = none
+  autoFolderPerAlbum: boolean; // if true: downloads/{directory}/{albumId}/file.ext
   verboseLogging: boolean; // if true: SW emits debug-level entries to the Logs tab
 };
 
@@ -34,6 +34,6 @@ export type MDConfig = {
   hosterId: HosterId;
   pageType: "viewer" | "gallery";
   maxParallel: number;
-  subfolderPrefix: string;
+  downloadDirectory: string;
   autoFolderPerAlbum: boolean;
 };
