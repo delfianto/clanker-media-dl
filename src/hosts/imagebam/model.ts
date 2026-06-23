@@ -33,10 +33,10 @@ export const imagebamModel: HosterModel = {
   galleryConfig: {
     // Imagebam gallery pages share /view/* with single-image viewer pages.
     // viewerIndicator tells isolated.ts: if img.main-image is ABSENT → gallery page.
-    galleryMatches: ["https://www.imagebam.com/view/*"],
+    galleryMatches: ["https://www.imagebam.com/view/*", "https://www.imagebam.com/gallery/*"],
     viewerIndicator: "img.main-image",
     albumNameSelector: "h1",
-    albumIdFromPath: "^/(?:view|gallery)/([A-Z0-9]+)$",
+    albumIdFromPath: "^/(?:view|gallery)/([a-zA-Z0-9]+)$",
     imageSource: {
       strategy: "resolve-viewer",
       // Gallery grid contains links to viewer pages like <a href=".../view/ID" class="thumbnail">
