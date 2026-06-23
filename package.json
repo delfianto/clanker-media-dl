@@ -8,7 +8,7 @@
     "build": "vp build",
     "build:firefox": "BROWSER=firefox vp build",
     "dev": "vp build --watch",
-    "check": "vp check",
+    "check": "vp check && tsc --noEmit",
     "lint": "vp lint src/",
     "fmt": "vp fmt src/",
     "test": "bun test"
