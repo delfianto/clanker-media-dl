@@ -1,0 +1,28 @@
+{
+  "name": "clanker-media-downloader",
+  "version": "1.0.0",
+  "private": true,
+  "description": "One-click image downloads from image hosting sites — MV3 browser extension",
+  "type": "module",
+  "scripts": {
+    "build": "vp build",
+    "build:firefox": "BROWSER=firefox vp build",
+    "dev": "vp build --watch",
+    "check": "vp check",
+    "lint": "vp lint src/",
+    "fmt": "vp fmt src/"
+  },
+  "dependencies": {
+    "webextension-polyfill": "^0.12.0"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.268",
+    "@types/webextension-polyfill": "^0.12.0",
+    "typescript": "rc",
+    "vite-plugin-web-extension": "latest",
+    "vite-plus": "latest"
+  },
+  "trustedDependencies": [
+    "spawn-sync"
+  ]
+}

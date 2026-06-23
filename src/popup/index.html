@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Clanker Media Downloader</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header>
+      <img src="/icons/icon-48.png" alt="" class="logo" />
+      <div class="title-block">
+        <h1>Clanker Media</h1>
+        <span class="version" id="version"></span>
+      </div>
+      <label class="switch" title="Enable / disable extension">
+        <input type="checkbox" id="enabled" />
+        <span class="slider"></span>
+      </label>
+    </header>
+
+    <main>
+      <section>
+        <h2>Active on this page</h2>
+        <div class="active-card">
+          <span class="dot" id="active-dot"></span>
+          <span id="active-text">Checking…</span>
+        </div>
+      </section>
+
+      <button class="btn primary" id="open-options">⚙ Settings</button>
+    </main>
+
+    <footer>
+      <a href="https://github.com/delfianto/clanker-media-downloader" target="_blank" rel="noopener"
+        >GitHub</a
+      >
+    </footer>
+
+    <script type="module" src="./index.ts"></script>
+  </body>
+</html>
