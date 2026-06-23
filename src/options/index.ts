@@ -310,7 +310,6 @@ function renderFallbackNameSection(override: HosterOverride): HTMLElement {
   });
 
   return el("section", {}, [
-    el("div", { className: "section-head" }, [el("h3", { textContent: "Filename" })]),
     el("div", { className: "settings-field" }, [
       el("div", {}, [
         el("div", { className: "settings-label", textContent: "Use Fallback Name" }),
