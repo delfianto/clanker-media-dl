@@ -6,6 +6,7 @@ import type {
 } from "../types/messages";
 import type { DownloadJob } from "../types/jobs";
 import { crossOriginFetchText } from "./fetcher";
+import { appendLog } from "./logger";
 
 const JOBS_KEY = "downloadJobs";
 
@@ -48,33 +49,39 @@ function broadcastProgress(job: DownloadJob): void {
     failedCount: job.failedCount,
     status: job.status,
   };
-  // Fire-and-forget to all extension pages (options, popup). Ignore errors when
-  // no listener is open.
   void browser.runtime.sendMessage(msg).catch(() => {});
 }
 
 // ── URL resolution ───────────────────────────────────────────────────────────
 
-// For bunkr: extract the signed URL via the CDN sign API.
-// jsCDN is the raw (unsigned) CDN URL embedded in the viewer page source.
-async function signBunkrUrl(jsCDN: string): Promise<string> {
+async function signBunkrUrl(jsCDN: string, jobId: string): Promise<string> {
   const parsed = new URL(jsCDN);
   const signUrl = `https://glb-apisign.cdn.cr/sign?path=${encodeURIComponent(parsed.pathname)}`;
+  void appendLog("debug", `Signing bunkr URL: ${jsCDN}`, jobId);
   const { text } = await crossOriginFetchText(signUrl);
   const json = JSON.parse(text) as { token?: string; ex?: string };
   if (!json.token || !json.ex) throw new Error("bunkr sign API returned unexpected shape");
   return `${jsCDN}?token=${json.token}&ex=${json.ex}`;
 }
 
-async function resolveItem(item: GalleryJobItem): Promise<string> {
+async function resolveItem(item: GalleryJobItem, jobId: string): Promise<string> {
   if (item.kind === "resolved") return item.imageUrl;
 
+  void appendLog("debug", `Fetching viewer: ${item.viewerUrl}`, jobId);
   const { text } = await crossOriginFetchText(item.viewerUrl);
   const match = new RegExp(item.extractor).exec(text);
   const rawUrl = match?.[1];
-  if (!rawUrl) throw new Error(`extractor found no match in ${item.viewerUrl}`);
+  if (!rawUrl) {
+    // Log a snippet of the fetched HTML to help debug extractor mismatches.
+    void appendLog(
+      "error",
+      `Extractor "${item.extractor}" found no match in ${item.viewerUrl} (HTML snippet: ${text.slice(0, 300).replace(/\s+/g, " ")})`,
+      jobId,
+    );
+    throw new Error(`extractor found no match in ${item.viewerUrl}`);
+  }
 
-  if (item.needsSign) return signBunkrUrl(rawUrl);
+  if (item.needsSign) return signBunkrUrl(rawUrl, jobId);
   return rawUrl;
 }
 
@@ -93,10 +100,21 @@ async function runQueue(
       const item = items[idx];
       if (!item) continue;
 
+      void appendLog(
+        "debug",
+        `Item ${idx + 1}/${items.length}: ${item.kind === "resolved" ? item.imageUrl : item.viewerUrl}`,
+        job.jobId,
+      );
+
       let imageUrl: string;
       try {
-        imageUrl = await resolveItem(item);
-      } catch {
+        imageUrl = await resolveItem(item, job.jobId);
+      } catch (resolveErr) {
+        void appendLog(
+          "error",
+          `Resolve failed for item ${idx + 1}: ${String(resolveErr)}`,
+          job.jobId,
+        );
         job.failedCount++;
         job.completedCount++;
         await upsertJob(job);
@@ -120,7 +138,13 @@ async function runQueue(
           conflictAction: "uniquify",
         });
         job.completedCount++;
-      } catch {
+        void appendLog("debug", `Queued download: ${filePath}`, job.jobId);
+      } catch (dlErr) {
+        void appendLog(
+          "error",
+          `browser.downloads.download failed for ${imageUrl}: ${String(dlErr)}`,
+          job.jobId,
+        );
         job.failedCount++;
         job.completedCount++;
       }
@@ -135,6 +159,11 @@ async function runQueue(
   job.status = job.failedCount > 0 ? "error" : "done";
   await upsertJob(job);
   broadcastProgress(job);
+  void appendLog(
+    "info",
+    `Job complete: ${job.completedCount - job.failedCount} ok, ${job.failedCount} failed`,
+    job.jobId,
+  );
 }
 
 // ── Public API ───────────────────────────────────────────────────────────────
@@ -152,15 +181,17 @@ export async function startGalleryJob(req: MDGalleryStartRequest): Promise<void>
   };
   await upsertJob(job);
   broadcastProgress(job);
+  void appendLog(
+    "info",
+    `Gallery job started [${req.hosterId}]: ${req.items.length} items → "${req.subfolder || "(no folder)"}", parallel=${req.maxParallel}`,
+    job.jobId,
+  );
   // Awaiting runQueue keeps the message handler's Promise pending, which tells
   // Chrome to keep the SW alive until all downloads are initiated.
-  // (void / fire-and-forget would let Chrome terminate the SW immediately.)
   await runQueue(job, req.items.slice(), req.maxParallel);
 }
 
 // Called at SW startup to recover any jobs that were interrupted by SW termination.
-// In practice, MV3 SWs can be killed mid-job; this ensures the job is marked as
-// errored rather than stuck forever in "running".
 export async function resumeRunningJobs(): Promise<void> {
   const jobs = await readJobs();
   for (const job of jobs) {
@@ -168,6 +199,7 @@ export async function resumeRunningJobs(): Promise<void> {
       job.status = "error";
       await upsertJob(job);
       broadcastProgress(job);
+      void appendLog("warn", "Job marked error: SW restarted mid-run", job.jobId);
     }
   }
 }

@@ -21,6 +21,7 @@ export type Settings = {
   maxParallel: number; // 1–10; concurrent downloads per gallery job
   subfolderPrefix: string; // relative subfolder prefix inside browser downloads dir; "" = none
   autoFolderPerAlbum: boolean; // if true: downloads/{prefix}/{albumId}/file.ext
+  verboseLogging: boolean; // if true: SW emits debug-level entries to the Logs tab
 };
 
 // Payload delivered from isolated.ts (ISOLATED, can read storage) to main.ts

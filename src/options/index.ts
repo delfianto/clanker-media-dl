@@ -1,8 +1,8 @@
 import browser from "webextension-polyfill";
 import type { HosterId, Settings } from "../types/global";
 import type { HosterModel, RedirectRule } from "../types/hoster";
-import type { DownloadJob } from "../types/jobs";
-import type { MDJobProgressMessage, MDListJobsResponse } from "../types/messages";
+import type { DownloadJob, DownloadLog } from "../types/jobs";
+import type { MDJobProgressMessage, MDListJobsResponse, MDLogMessage } from "../types/messages";
 import { ALL_MODELS, getModel } from "../hosts/index";
 import { DEFAULT_SETTINGS } from "../settings/schema";
 
@@ -331,6 +331,8 @@ function renderPanel(): void {
 
 // ── Downloads tab ─────────────────────────────────────
 let dlRefreshTimer: ReturnType<typeof setInterval> | undefined;
+type DlSubTab = "settings" | "history" | "logs";
+let activeDlSubTab: DlSubTab = "settings";
 
 function formatJobStatus(job: DownloadJob): string {
   if (job.status === "running") return `${job.completedCount} / ${job.totalCount}`;
@@ -410,6 +412,13 @@ function renderDownloadsSettings(): void {
     persistSoon();
   });
 
+  // Verbose logging toggle
+  const verboseToggle = el("input", { type: "checkbox", checked: settings.verboseLogging });
+  verboseToggle.addEventListener("change", () => {
+    settings.verboseLogging = verboseToggle.checked;
+    persist();
+  });
+
   container.append(
     el("div", { className: "settings-field" }, [
       el("div", {}, [
@@ -443,15 +452,61 @@ function renderDownloadsSettings(): void {
       ]),
       prefixInput,
     ]),
+    el("div", { className: "settings-field" }, [
+      el("div", {}, [
+        el("div", { className: "settings-label", textContent: "Verbose logging" }),
+        el("div", {
+          className: "settings-hint",
+          textContent: "Emit debug-level detail to the Logs tab",
+        }),
+      ]),
+      el("label", { className: "hoster-toggle" }, [
+        el("span", { className: "switch" }, [verboseToggle, el("span", { className: "slider" })]),
+      ]),
+    ]),
   );
 }
 
-async function loadDownloadsTab(): Promise<void> {
-  renderDownloadsSettings();
+function formatTs(ts: number): string {
+  const d = new Date(ts);
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  const ss = String(d.getSeconds()).padStart(2, "0");
+  const ms = String(d.getMilliseconds()).padStart(3, "0");
+  return `${hh}:${mm}:${ss}.${ms}`;
+}
 
+function renderLogEntry(entry: DownloadLog): HTMLElement {
+  return el("div", { className: "log-entry" }, [
+    el("span", { className: "log-ts", textContent: formatTs(entry.ts) }),
+    el("span", { className: `log-level log-${entry.level}`, textContent: entry.level }),
+    el("span", { className: "log-msg", textContent: entry.msg }),
+  ]);
+}
+
+async function loadLogsTab(): Promise<void> {
+  const container = $("dl-logs");
+  container.replaceChildren(el("p", { className: "default-note", textContent: "Loading…" }));
+  try {
+    const raw = await browser.storage.local.get({ downloadLogs: [] });
+    const logs = (raw["downloadLogs"] as DownloadLog[] | undefined) ?? [];
+    $("log-count").textContent = `${logs.length} entries`;
+    container.replaceChildren();
+    if (logs.length === 0) {
+      container.append(el("p", { className: "default-note", textContent: "No logs yet." }));
+    } else {
+      for (const entry of [...logs].reverse()) container.append(renderLogEntry(entry));
+    }
+  } catch {
+    container.replaceChildren(
+      el("p", { className: "default-note", textContent: "Could not load logs." }),
+    );
+  }
+}
+
+async function loadHistoryTab(): Promise<void> {
   const jobsContainer = $("dl-jobs");
   jobsContainer.replaceChildren(el("p", { className: "default-note", textContent: "Loading…" }));
-
   try {
     const res = (await browser.runtime.sendMessage({ type: "MD_LIST_JOBS" })) as MDListJobsResponse;
     jobsContainer.replaceChildren();
@@ -473,6 +528,28 @@ async function loadDownloadsTab(): Promise<void> {
 type Tab = "hosters" | "downloads";
 let activeTab: Tab = "hosters";
 
+function switchDlSubTab(tab: DlSubTab): void {
+  activeDlSubTab = tab;
+  clearInterval(dlRefreshTimer);
+
+  for (const t of ["settings", "history", "logs"] as const) {
+    $(`stab-${t}`).classList.toggle("active", t === tab);
+    $(`stab-${t}`).setAttribute("aria-selected", String(t === tab));
+    const view = $(`dl-view-${t}`);
+    if (t === tab) view.removeAttribute("hidden");
+    else view.setAttribute("hidden", "");
+  }
+
+  if (tab === "settings") {
+    renderDownloadsSettings();
+  } else if (tab === "history") {
+    void loadHistoryTab();
+    dlRefreshTimer = setInterval(() => void loadHistoryTab(), 3000);
+  } else {
+    void loadLogsTab();
+  }
+}
+
 function switchTab(tab: Tab): void {
   activeTab = tab;
 
@@ -481,19 +558,14 @@ function switchTab(tab: Tab): void {
   $("tab-downloads").classList.toggle("active", tab === "downloads");
   $("tab-downloads").setAttribute("aria-selected", String(tab === "downloads"));
 
-  const hostersView = $("view-hosters");
-  const downloadsView = $("view-downloads");
-
   if (tab === "hosters") {
-    hostersView.removeAttribute("hidden");
-    downloadsView.setAttribute("hidden", "");
+    $("view-hosters").removeAttribute("hidden");
+    $("view-downloads").setAttribute("hidden", "");
     clearInterval(dlRefreshTimer);
   } else {
-    hostersView.setAttribute("hidden", "");
-    downloadsView.removeAttribute("hidden");
-    void loadDownloadsTab();
-    // Refresh job list every 3s while the tab is open.
-    dlRefreshTimer = setInterval(() => void loadDownloadsTab(), 3000);
+    $("view-hosters").setAttribute("hidden", "");
+    $("view-downloads").removeAttribute("hidden");
+    switchDlSubTab(activeDlSubTab);
   }
 }
 
@@ -508,10 +580,11 @@ async function init(): Promise<void> {
   for (const model of ALL_MODELS) {
     settings.hosters[model.id] ??= clone(DEFAULT_SETTINGS.hosters[model.id]);
   }
-  // Heal missing gallery settings (upgrade from older storage schema).
+  // Heal missing gallery/log settings (upgrade from older storage schema).
   settings.maxParallel ??= DEFAULT_SETTINGS.maxParallel;
   settings.subfolderPrefix ??= DEFAULT_SETTINGS.subfolderPrefix;
   settings.autoFolderPerAlbum ??= DEFAULT_SETTINGS.autoFolderPerAlbum;
+  settings.verboseLogging ??= DEFAULT_SETTINGS.verboseLogging;
 
   $<HTMLSpanElement>("version").textContent = `v${browser.runtime.getManifest().version}`;
 
@@ -524,38 +597,65 @@ async function init(): Promise<void> {
 
   $("tab-hosters").addEventListener("click", () => switchTab("hosters"));
   $("tab-downloads").addEventListener("click", () => switchTab("downloads"));
+  $("stab-settings").addEventListener("click", () => switchDlSubTab("settings"));
+  $("stab-history").addEventListener("click", () => switchDlSubTab("history"));
+  $("stab-logs").addEventListener("click", () => switchDlSubTab("logs"));
 
-  // Live progress updates from the SW while the Downloads tab is open.
-  // Update card DOM elements in-place to avoid needing the full job object.
+  $("btn-clear-logs").addEventListener("click", () => {
+    void browser.storage.local.set({ downloadLogs: [] }).then(() => {
+      $("log-count").textContent = "0 entries";
+      $("dl-logs").replaceChildren(
+        el("p", { className: "default-note", textContent: "No logs yet." }),
+      );
+    });
+  });
+
+  // Live messages from the SW while the Downloads tab is open.
   browser.runtime.onMessage.addListener((msg: unknown) => {
-    const m = msg as Partial<MDJobProgressMessage>;
-    if (m.type !== "MD_JOB_PROGRESS" || activeTab !== "downloads") return;
-    const card = document.getElementById(`job-${m.jobId ?? ""}`);
-    if (!card) return;
+    if (activeTab !== "downloads") return;
+    const m = msg as Record<string, unknown>;
 
-    const progressEl = card.querySelector("progress");
-    if (progressEl) {
-      progressEl.setAttribute("value", String(m.completedCount ?? 0));
-      progressEl.setAttribute("max", String(m.totalCount ?? 0));
+    // ── Progress update → History tab card ──
+    if (m["type"] === "MD_JOB_PROGRESS" && activeDlSubTab === "history") {
+      const prog = m as Partial<MDJobProgressMessage>;
+      const card = document.getElementById(`job-${prog.jobId ?? ""}`);
+      if (!card) return;
+
+      const progressEl = card.querySelector("progress");
+      if (progressEl) {
+        progressEl.setAttribute("value", String(prog.completedCount ?? 0));
+        progressEl.setAttribute("max", String(prog.totalCount ?? 0));
+      }
+      const statusEl = card.querySelector<HTMLElement>(".job-status");
+      if (statusEl) {
+        const st = prog.status ?? "running";
+        const completed = prog.completedCount ?? 0;
+        const total = prog.totalCount ?? 0;
+        const failed = prog.failedCount ?? 0;
+        statusEl.className = `job-status ${st}`;
+        if (st === "running") statusEl.textContent = `${completed} / ${total}`;
+        else if (st === "done")
+          statusEl.textContent = failed > 0 ? `Done — ${failed} failed` : `Done — ${total} files`;
+        else statusEl.textContent = `Error — ${failed} failed`;
+      }
+      const pctEl = card.querySelector<HTMLElement>(".job-pct");
+      const total = prog.totalCount ?? 0;
+      if (pctEl && total > 0)
+        pctEl.textContent = `${Math.round(((prog.completedCount ?? 0) / total) * 100)}%`;
     }
 
-    const statusEl = card.querySelector<HTMLElement>(".job-status");
-    if (statusEl) {
-      const st = m.status ?? "running";
-      const completed = m.completedCount ?? 0;
-      const total = m.totalCount ?? 0;
-      const failed = m.failedCount ?? 0;
-      statusEl.className = `job-status ${st}`;
-      if (st === "running") statusEl.textContent = `${completed} / ${total}`;
-      else if (st === "done")
-        statusEl.textContent = failed > 0 ? `Done — ${failed} failed` : `Done — ${total} files`;
-      else statusEl.textContent = `Error — ${failed} failed`;
+    // ── Log entry → Logs tab ──
+    if (m["type"] === "MD_LOG" && activeDlSubTab === "logs") {
+      const logMsg = m as Partial<MDLogMessage>;
+      const entry = logMsg.entry;
+      if (!entry) return;
+      const container = $("dl-logs");
+      container.querySelector(".default-note")?.remove();
+      container.prepend(renderLogEntry(entry));
+      const countEl = $("log-count");
+      const prev = parseInt(countEl.textContent ?? "0") || 0;
+      countEl.textContent = `${prev + 1} entries`;
     }
-
-    const pctEl = card.querySelector<HTMLElement>(".job-pct");
-    const total = m.totalCount ?? 0;
-    if (pctEl && total > 0)
-      pctEl.textContent = `${Math.round(((m.completedCount ?? 0) / total) * 100)}%`;
   });
 
   renderSidebar();

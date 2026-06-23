@@ -40,15 +40,29 @@
     </div>
 
     <div id="view-downloads" hidden>
+      <div class="sub-tab-bar" role="tablist">
+        <button class="sub-tab-btn active" id="stab-settings" role="tab" aria-selected="true">
+          Settings
+        </button>
+        <button class="sub-tab-btn" id="stab-history" role="tab" aria-selected="false">
+          History
+        </button>
+        <button class="sub-tab-btn" id="stab-logs" role="tab" aria-selected="false">Logs</button>
+      </div>
       <div class="downloads-view">
-        <section class="dl-settings-section">
-          <div class="section-head"><h3>Download Behaviour</h3></div>
+        <div id="dl-view-settings">
           <div id="dl-settings"></div>
-        </section>
-        <section class="dl-jobs-section">
-          <div class="section-head"><h3>Recent Downloads</h3></div>
+        </div>
+        <div id="dl-view-history" hidden>
           <div id="dl-jobs"></div>
-        </section>
+        </div>
+        <div id="dl-view-logs" hidden>
+          <div class="logs-toolbar">
+            <span id="log-count" class="log-count"></span>
+            <button id="btn-clear-logs" class="reset-btn">Clear</button>
+          </div>
+          <div id="dl-logs" class="log-list"></div>
+        </div>
       </div>
     </div>
 
