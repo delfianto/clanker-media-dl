@@ -175,23 +175,30 @@ export function runGalleryAdapter(model: HosterModel, config: MDConfig): void {
     ? (model.getGalleryName(document) ?? albumId)
     : (document.querySelector(gc.albumNameSelector)?.textContent?.trim() ?? albumId);
 
+  // Prefer the model's custom collector (e.g. Bunkr reads window.albumFiles for
+  // the full list regardless of pagination/view mode). Fall back to strategy-
+  // based DOM scraping for other hosters.
   let items: GalleryJobItem[];
-  switch (gc.imageSource.strategy) {
-    case "thumbnail-transform":
-      items = collectThumbnailTransform(gc);
-      break;
-    case "anchor-href":
-      items = collectAnchorHref(gc);
-      break;
-    case "resolve-viewer":
-      items = collectResolveViewer(gc);
-      break;
+  if (gc.collectAllItems) {
+    items = gc.collectAllItems();
+  } else {
+    switch (gc.imageSource.strategy) {
+      case "thumbnail-transform":
+        items = collectThumbnailTransform(gc);
+        break;
+      case "anchor-href":
+        items = collectAnchorHref(gc);
+        break;
+      case "resolve-viewer":
+        items = collectResolveViewer(gc);
+        break;
+    }
   }
 
   if (items.length === 0) return;
 
   const note =
-    gc.imageSource.strategy === "anchor-href"
+    gc.imageSource.strategy === "anchor-href" && !gc.collectAllItems
       ? "Current page only — pagination not yet supported"
       : undefined;
 

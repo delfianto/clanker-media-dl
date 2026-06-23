@@ -3,6 +3,8 @@
 // HosterId is defined here (the primitive) and re-exported from global.d.ts so
 // settings code can import it from either place.
 
+import type { GalleryJobItem } from "./messages";
+
 export type HosterId = "imagebam" | "imgbox" | "imgbb" | "bunkr";
 
 export type RedirectRule = {
@@ -58,6 +60,11 @@ export type GalleryConfig = {
   albumNameSelector: string; // CSS selector for the album/gallery title text node
   albumIdFromPath: string; // regex on location.pathname — group 1 = album id for subfolder
   imageSource: GalleryImageSource;
+  // Optional: collect all gallery items from MAIN world. For hosters where items
+  // are loaded dynamically via JS (e.g. Bunkr's window.albumFiles), this bypasses
+  // DOM-scraping strategies and returns the complete item list directly.
+  // Runs in MAIN world so it has full access to page JS globals.
+  collectAllItems?: () => GalleryJobItem[];
 };
 
 export type HosterModel = {

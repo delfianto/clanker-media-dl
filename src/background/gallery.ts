@@ -76,6 +76,20 @@ async function resolveItem(item: GalleryJobItem, jobId: string): Promise<string>
   if (rawUrl) {
     rawUrl = rawUrl.replace(/\\/g, "");
   }
+
+  // Fallback: video/audio pages don't use var jsCDN — try <source src="...">,
+  // <video src="...">, or <audio src="..."> patterns.
+  if (!rawUrl) {
+    const sourceMatch =
+      /<source\s+[^>]*src=["']([^"']+)["']/i.exec(text) ??
+      /<video\s+[^>]*src=["']([^"']+)["']/i.exec(text) ??
+      /<audio\s+[^>]*src=["']([^"']+)["']/i.exec(text);
+    if (sourceMatch?.[1]) {
+      rawUrl = sourceMatch[1].replace(/\\/g, "");
+      void appendLog("debug", `Primary extractor missed, found media src: ${rawUrl}`, jobId);
+    }
+  }
+
   if (!rawUrl) {
     // Log a snippet of the fetched HTML to help debug extractor mismatches.
     void appendLog(
