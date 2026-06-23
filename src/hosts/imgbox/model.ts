@@ -36,4 +36,13 @@ export const imgboxModel: HosterModel = {
         thumb.replace(/thumbs(\d*)\.imgbox\.com/, "images$1.imgbox.com").replace(/_[bt]\./, "_o."),
     },
   },
+  getGalleryName: (doc: Document) => {
+    const h1 = doc.querySelector("h1");
+    if (!h1) return null;
+    const textNodes = Array.from(h1.childNodes)
+      .filter((node) => node.nodeType === Node.TEXT_NODE)
+      .map((node) => node.textContent)
+      .join("");
+    return textNodes.replace(/\s*-\s*\d+\s+images\s*$/i, "").trim();
+  },
 };
