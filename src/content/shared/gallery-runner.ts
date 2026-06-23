@@ -22,10 +22,13 @@ function basenameFromUrl(url: string): string {
 
 // ── Strategy: thumbnail-transform ───────────────────────────────────────────
 
-function collectThumbnailTransform(gc: GalleryConfig): GalleryJobItem[] {
+function collectThumbnailTransform(
+  gc: GalleryConfig,
+  doc: Document | Element = document,
+): GalleryJobItem[] {
   const src = gc.imageSource;
   if (src.strategy !== "thumbnail-transform") return [];
-  const imgs = Array.from(document.querySelectorAll<HTMLImageElement>(src.selector));
+  const imgs = Array.from(doc.querySelectorAll<HTMLImageElement>(src.selector));
   return imgs
     .map((img) => img.src)
     .filter(Boolean)
@@ -37,10 +40,13 @@ function collectThumbnailTransform(gc: GalleryConfig): GalleryJobItem[] {
 
 // ── Strategy: anchor-href ────────────────────────────────────────────────────
 
-function collectAnchorHref(gc: GalleryConfig): GalleryJobItem[] {
+function collectAnchorHref(
+  gc: GalleryConfig,
+  doc: Document | Element = document,
+): GalleryJobItem[] {
   const src = gc.imageSource;
   if (src.strategy !== "anchor-href") return [];
-  const imgs = Array.from(document.querySelectorAll<HTMLImageElement>(src.imageSelector));
+  const imgs = Array.from(doc.querySelectorAll<HTMLImageElement>(src.imageSelector));
   return imgs
     .map((img) => img.src)
     .filter(Boolean)
@@ -53,10 +59,13 @@ function collectAnchorHref(gc: GalleryConfig): GalleryJobItem[] {
 
 // ── Strategy: resolve-viewer ─────────────────────────────────────────────────
 
-function collectResolveViewer(gc: GalleryConfig): GalleryJobItem[] {
+function collectResolveViewer(
+  gc: GalleryConfig,
+  doc: Document | Element = document,
+): GalleryJobItem[] {
   const src = gc.imageSource;
   if (src.strategy !== "resolve-viewer") return [];
-  const anchors = Array.from(document.querySelectorAll<HTMLAnchorElement>(src.anchorSelector));
+  const anchors = Array.from(doc.querySelectorAll<HTMLAnchorElement>(src.anchorSelector));
   return anchors
     .filter((a) => !!a.href)
     .map((a) => {
@@ -79,6 +88,78 @@ function collectResolveViewer(gc: GalleryConfig): GalleryJobItem[] {
       }
       return item;
     });
+}
+
+// ── Pagination helpers ────────────────────────────────────────────────────────
+
+function collectPageUrls(): string[] {
+  const pagination = document.querySelector(
+    ".pagination, .pages, [class*='pagination'], .paginator",
+  );
+  if (!pagination) return [];
+  const links = Array.from(pagination.querySelectorAll<HTMLAnchorElement>("a[href]"));
+  const currentPath = window.location.pathname;
+  const urls = links
+    .map((a) => {
+      try {
+        return new URL(a.href, window.location.href);
+      } catch {
+        return null;
+      }
+    })
+    .filter(
+      (u): u is URL =>
+        u !== null && u.origin === window.location.origin && u.pathname === currentPath,
+    )
+    .map((u) => u.href);
+  return Array.from(new Set(urls)).filter((href) => href !== window.location.href);
+}
+
+async function fetchAdditionalItems(
+  pageUrls: string[],
+  gc: GalleryConfig,
+): Promise<GalleryJobItem[]> {
+  const allItems: GalleryJobItem[] = [];
+  const parser = new DOMParser();
+
+  // Fetch all pages in parallel
+  const htmlTexts = await Promise.all(
+    pageUrls.map((url) =>
+      fetch(url)
+        .then((r) => {
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          return r.text();
+        })
+        .catch((err) => {
+          console.error(`[md] failed to fetch page ${url}:`, err);
+          return "";
+        }),
+    ),
+  );
+
+  for (const html of htmlTexts) {
+    if (!html) continue;
+    try {
+      const doc = parser.parseFromString(html, "text/html");
+      let pageItems: GalleryJobItem[] = [];
+      switch (gc.imageSource.strategy) {
+        case "thumbnail-transform":
+          pageItems = collectThumbnailTransform(gc, doc);
+          break;
+        case "anchor-href":
+          pageItems = collectAnchorHref(gc, doc);
+          break;
+        case "resolve-viewer":
+          pageItems = collectResolveViewer(gc, doc);
+          break;
+      }
+      allItems.push(...pageItems);
+    } catch (e) {
+      console.error("[md] failed to parse page document:", e);
+    }
+  }
+
+  return allItems;
 }
 
 // ── Main entry ───────────────────────────────────────────────────────────────
@@ -116,6 +197,45 @@ export function runGalleryAdapter(model: HosterModel, config: MDConfig): void {
 
   const subfolder = buildSubfolder(albumName, config);
 
+  async function triggerDownload(
+    btnElement: HTMLElement,
+    loadingIcon: string,
+    _doneIcon: string,
+  ): Promise<string> {
+    btnElement.classList.add("loading");
+
+    const otherPageUrls = collectPageUrls();
+    let jobItems = items.slice();
+    if (otherPageUrls.length > 0) {
+      btnElement.innerHTML = loadingIcon + "Fetching pages...";
+      const extra = await fetchAdditionalItems(otherPageUrls, gc);
+      jobItems.push(...extra);
+
+      // De-duplicate
+      const seen = new Set<string>();
+      jobItems = jobItems.filter((item) => {
+        const key = item.kind === "resolve-viewer" ? item.viewerUrl : item.imageUrl;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    }
+
+    btnElement.innerHTML = loadingIcon + "Starting...";
+
+    const jobId = crypto.randomUUID();
+    const req: MDGalleryStartRequest = {
+      type: "MD_GALLERY_START",
+      jobId,
+      hosterId: model.id,
+      subfolder,
+      items: jobItems,
+      maxParallel: config.maxParallel,
+    };
+    window.postMessage(req, "*");
+    return jobId;
+  }
+
   const viewSwitches = document.querySelector(".view-switches");
   if (model.id === "imagebam" && viewSwitches) {
     injectGalleryStyles();
@@ -126,21 +246,14 @@ export function runGalleryAdapter(model: HosterModel, config: MDConfig): void {
     dlBtn.innerHTML = '<i class="fa fa-download"></i>';
 
     let activeJobId = "";
-    dlBtn.addEventListener("click", () => {
+    dlBtn.addEventListener("click", async () => {
       if (activeJobId) return;
-      activeJobId = crypto.randomUUID();
-      dlBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i>';
-      dlBtn.classList.add("loading");
-
-      const req: MDGalleryStartRequest = {
-        type: "MD_GALLERY_START",
-        jobId: activeJobId,
-        hosterId: model.id,
-        subfolder,
-        items,
-        maxParallel: config.maxParallel,
-      };
-      window.postMessage(req, "*");
+      activeJobId = "loading";
+      activeJobId = await triggerDownload(
+        dlBtn,
+        '<i class="fa fa-spinner fa-spin"></i> ',
+        '<i class="fa fa-download"></i>',
+      );
     });
 
     window.addEventListener("message", (event) => {
@@ -173,21 +286,10 @@ export function runGalleryAdapter(model: HosterModel, config: MDConfig): void {
     dlBtn.innerHTML = dlIconSvg;
 
     let activeJobId = "";
-    dlBtn.addEventListener("click", () => {
+    dlBtn.addEventListener("click", async () => {
       if (activeJobId) return;
-      activeJobId = crypto.randomUUID();
-      dlBtn.innerHTML = loadingIconSvg;
-      dlBtn.classList.add("loading");
-
-      const req: MDGalleryStartRequest = {
-        type: "MD_GALLERY_START",
-        jobId: activeJobId,
-        hosterId: model.id,
-        subfolder,
-        items,
-        maxParallel: config.maxParallel,
-      };
-      window.postMessage(req, "*");
+      activeJobId = "loading";
+      activeJobId = await triggerDownload(dlBtn, loadingIconSvg, dlIconSvg);
     });
 
     window.addEventListener("message", (event) => {
@@ -227,21 +329,14 @@ export function runGalleryAdapter(model: HosterModel, config: MDConfig): void {
     dlBtn.innerHTML = dlIconSvg + `Download (${items.length})`;
 
     let activeJobId = "";
-    dlBtn.addEventListener("click", () => {
+    dlBtn.addEventListener("click", async () => {
       if (activeJobId) return;
-      activeJobId = crypto.randomUUID();
-      dlBtn.innerHTML = loadingIconSvg + "Downloading...";
-      dlBtn.classList.add("loading");
-
-      const req: MDGalleryStartRequest = {
-        type: "MD_GALLERY_START",
-        jobId: activeJobId,
-        hosterId: model.id,
-        subfolder,
-        items,
-        maxParallel: config.maxParallel,
-      };
-      window.postMessage(req, "*");
+      activeJobId = "loading";
+      activeJobId = await triggerDownload(
+        dlBtn,
+        loadingIconSvg,
+        dlIconSvg + `Download (${items.length})`,
+      );
     });
 
     window.addEventListener("message", (event) => {
@@ -265,16 +360,34 @@ export function runGalleryAdapter(model: HosterModel, config: MDConfig): void {
     return;
   }
 
-  const wrap = createDownloadAllButton(items.length, note, () => {
-    const req: MDGalleryStartRequest = {
-      type: "MD_GALLERY_START",
-      jobId: crypto.randomUUID(),
-      hosterId: model.id,
-      subfolder,
-      items,
-      maxParallel: config.maxParallel,
-    };
-    window.postMessage(req, "*");
+  const wrap = createDownloadAllButton(items.length, note, async () => {
+    const btn = wrap.querySelector("button");
+    if (btn) {
+      btn.textContent = "Fetching pages...";
+      const otherPageUrls = collectPageUrls();
+      let jobItems = items.slice();
+      if (otherPageUrls.length > 0) {
+        const extra = await fetchAdditionalItems(otherPageUrls, gc);
+        jobItems.push(...extra);
+        const seen = new Set<string>();
+        jobItems = jobItems.filter((item) => {
+          const key = item.kind === "resolve-viewer" ? item.viewerUrl : item.imageUrl;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+      }
+      btn.textContent = "Queued…";
+      const req: MDGalleryStartRequest = {
+        type: "MD_GALLERY_START",
+        jobId: crypto.randomUUID(),
+        hosterId: model.id,
+        subfolder,
+        items: jobItems,
+        maxParallel: config.maxParallel,
+      };
+      window.postMessage(req, "*");
+    }
   });
 
   // Inject the button before the gallery content.
