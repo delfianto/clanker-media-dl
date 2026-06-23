@@ -36,9 +36,9 @@ export function activateGallery(_model: HosterModel, ctx: GalleryCtx): void {
   );
 
   const dlIcon =
-    '<span class="btn-icon icon-download"></span><span class="btn-text phone-hide">Download</span>';
+    '<span class="btn-icon fas fa-download"></span><span class="btn-text phone-hide">Download</span>';
   const loadingIcon =
-    '<span class="btn-icon icon-circle-notch icon-spin"></span><span class="btn-text phone-hide">Download</span>';
+    '<span class="btn-icon fas fa-circle-notch fa-spin"></span><span class="btn-text phone-hide">Download</span>';
 
   const dlBtn = document.createElement("a");
   dlBtn.href = "javascript:void(0);";
