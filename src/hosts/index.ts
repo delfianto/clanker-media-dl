@@ -5,6 +5,7 @@ import { imgbbModel } from "./imgbb/model";
 import { bunkrModel } from "./bunkr/model";
 import { eromeModel } from "./erome/model";
 import { jpg6Model } from "./jpg6/model";
+import { girlsreleasedModel } from "./girlsreleased/model";
 
 // Every hoster the extension knows about. The redirector iterates this; the
 // popup uses it to render the hoster list and detect the active page.
@@ -15,6 +16,7 @@ export const ALL_MODELS: HosterModel[] = [
   bunkrModel,
   eromeModel,
   jpg6Model,
+  girlsreleasedModel,
 ];
 
 export function getModel(id: HosterId): HosterModel | undefined {
