@@ -163,13 +163,12 @@ export function runGalleryAdapter(model: HosterModel, config: MDConfig): void {
   const albumHeader = document.querySelector("h1");
   if (model.id === "imgbox" && albumHeader) {
     injectGalleryStyles();
-    const dlIconSvg =
-      '<svg viewBox="0 0 24 24" width="1.1em" height="1.1em" fill="currentColor" style="display: inline-block; vertical-align: middle;"><path d="M5 20h14v-2H5v2zM19 9h-4V3H9v6H5l7 7 7-7z"/></svg>';
+    const dlIconSvg = '<i class="icon-cloud-download"></i>';
     const loadingIconSvg =
       '<svg viewBox="0 0 24 24" width="1.1em" height="1.1em" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" style="display: inline-block; vertical-align: middle; animation: md-spin 1s linear infinite;"><circle cx="12" cy="12" r="10" stroke="currentColor" opacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor"/></svg>';
     const dlBtn = document.createElement("a");
     dlBtn.href = "javascript:void(0);";
-    dlBtn.className = "md-imgbox-gallery-btn";
+    dlBtn.className = "btn btn-inverse md-imgbox-gallery-btn";
     dlBtn.title = "Download Gallery";
     dlBtn.innerHTML = dlIconSvg;
 
