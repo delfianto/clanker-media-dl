@@ -339,7 +339,8 @@ async function runQueue(
           ? (new URL(imageUrl).pathname.split("/").at(-1) ?? item.filename)
           : item.filename;
       const safeFilename = sanitizeFilename(resolvedFilename);
-      const filePath = job.subfolder ? `${job.subfolder}/${safeFilename}` : safeFilename;
+      const itemSubfolder = item.subfolder ?? job.subfolder;
+      const filePath = itemSubfolder ? `${itemSubfolder}/${safeFilename}` : safeFilename;
 
       try {
         let succeeded = false;

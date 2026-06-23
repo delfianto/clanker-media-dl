@@ -3,6 +3,7 @@ import type { HosterModel } from "../../types/hoster";
 
 function collectGirlsreleasedItems(root?: Document | Element): GalleryJobItem[] {
   const scope = root ?? document;
+  const isSitePage = !root && window.location.pathname.includes("/site/");
 
   const anchors = Array.from(scope.querySelectorAll<HTMLAnchorElement>("a"));
   const items: GalleryJobItem[] = [];
@@ -14,6 +15,26 @@ function collectGirlsreleasedItems(root?: Document | Element): GalleryJobItem[] 
     .replace(/\s+/g, "_")
     .toLowerCase()
     .replace(/[^a-z0-9_-]/g, "");
+
+  if (isSitePage) {
+    for (const anchor of anchors) {
+      const href = anchor.href;
+      if (!href) continue;
+
+      const isSetLink = /\/set\/[^/?]+/.test(href);
+      if (isSetLink && !visited.has(href)) {
+        visited.add(href);
+        items.push({
+          kind: "resolve-viewer",
+          viewerUrl: href,
+          extractor: "continuebutton",
+          filename: "set_placeholder",
+        });
+      }
+    }
+    console.log(`[md] GirlsReleased: found ${items.length} set pages to crawl`);
+    return items;
+  }
 
   let idx = 0;
   for (const anchor of anchors) {
@@ -90,10 +111,15 @@ export const girlsreleasedModel: HosterModel = {
   },
   defaultCssOverrides: "",
   galleryConfig: {
-    galleryMatches: ["https://girlsreleased.com/set/*", "https://*.girlsreleased.com/set/*"],
+    galleryMatches: [
+      "https://girlsreleased.com/set/*",
+      "https://*.girlsreleased.com/set/*",
+      "https://girlsreleased.com/site/*",
+      "https://*.girlsreleased.com/site/*",
+    ],
     albumNameSelector: "h1",
-    albumIdFromPath: "^/set/([^/?]+)",
-    waitForSelector: "a[href*='imx.to/i/']",
+    albumIdFromPath: "^/(?:set|site)/([^/?]+)",
+    waitForSelector: "a[href*='imx.to/i/'], a[href*='/set/']",
     imageSource: {
       strategy: "anchor-href",
       imageSelector: "#root img",

@@ -49,12 +49,13 @@ export type MDMainResponse = {
 // A gallery item that requires the SW to fetch a viewer page to extract the URL.
 // needsSign: true signals the bunkr sign-API step after extraction.
 export type GalleryJobItem =
-  | { kind: "resolved"; imageUrl: string; filename: string }
+  | { kind: "resolved"; imageUrl: string; filename: string; subfolder?: string }
   | {
       kind: "resolve-viewer";
       viewerUrl: string;
       extractor: string;
       filename: string;
+      subfolder?: string;
     };
 
 // MAIN → ISOLATED → SW: kick off a gallery download job.
