@@ -186,6 +186,7 @@ h1 {
   color: var(--text-dim);
   user-select: none;
   cursor: pointer;
+  flex-shrink: 0;
 }
 
 .master-toggle:hover,
