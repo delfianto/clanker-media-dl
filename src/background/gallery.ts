@@ -72,7 +72,10 @@ async function resolveItem(item: GalleryJobItem, jobId: string): Promise<string>
   void appendLog("debug", `Fetching viewer: ${item.viewerUrl}`, jobId);
   const { text } = await crossOriginFetchText(item.viewerUrl);
   const match = new RegExp(item.extractor).exec(text);
-  const rawUrl = match?.[1];
+  let rawUrl = match?.[1];
+  if (rawUrl) {
+    rawUrl = rawUrl.replace(/\\/g, "");
+  }
   if (!rawUrl) {
     // Log a snippet of the fetched HTML to help debug extractor mismatches.
     void appendLog(
