@@ -533,8 +533,7 @@ function switchDlSubTab(tab: DlSubTab): void {
   clearInterval(dlRefreshTimer);
 
   for (const t of ["settings", "history", "logs"] as const) {
-    $(`stab-${t}`).classList.toggle("active", t === tab);
-    $(`stab-${t}`).setAttribute("aria-selected", String(t === tab));
+    $(`stab-${t}`).className = t === tab ? "hoster-item active" : "hoster-item";
     const view = $(`dl-view-${t}`);
     if (t === tab) view.removeAttribute("hidden");
     else view.setAttribute("hidden", "");
