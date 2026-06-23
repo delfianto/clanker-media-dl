@@ -185,7 +185,7 @@ async function resolveItem(item: GalleryJobItem, jobId: string, hosterId: string
 
 // ── Concurrency queue ────────────────────────────────────────────────────────
 
-const MAX_DOWNLOAD_RETRIES = 3;
+const MAX_DOWNLOAD_RETRIES = 5;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));

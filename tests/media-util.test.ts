@@ -60,6 +60,22 @@ describe("isTransientError", () => {
     expect(isTransientError(new Error("NETWORK_FAILED"))).toBe(true);
   });
 
+  it("flags NETWORK_TIMEOUT", () => {
+    expect(isTransientError(new Error("download interrupted: NETWORK_TIMEOUT"))).toBe(true);
+  });
+
+  it("flags NETWORK_DISCONNECTED", () => {
+    expect(isTransientError(new Error("download interrupted: NETWORK_DISCONNECTED"))).toBe(true);
+  });
+
+  it("flags NETWORK_SERVER_DOWN", () => {
+    expect(isTransientError(new Error("download interrupted: NETWORK_SERVER_DOWN"))).toBe(true);
+  });
+
+  it("flags FILE_TRANSIENT_ERROR", () => {
+    expect(isTransientError(new Error("download interrupted: FILE_TRANSIENT_ERROR"))).toBe(true);
+  });
+
   it("flags CRASH", () => {
     expect(isTransientError(new Error("download interrupted: CRASH"))).toBe(true);
   });
