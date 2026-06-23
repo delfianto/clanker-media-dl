@@ -272,6 +272,52 @@ export function runGalleryAdapter(
         });
       }
 
+      // If we are crawling a listing/site page (represented by items with /set/ viewer URLs),
+      // fetch each set page in parallel and extract its real items.
+      const hasSets = jobItems.some(
+        (item) => item.kind === "resolve-viewer" && item.viewerUrl.includes("/set/"),
+      );
+      if (hasSets) {
+        btnElement.innerHTML = loadingIcon;
+        const expandedItems: GalleryJobItem[] = [];
+        const parser = new DOMParser();
+
+        // Fetch all set pages in parallel
+        await Promise.all(
+          jobItems.map(async (item) => {
+            if (item.kind === "resolve-viewer" && item.viewerUrl.includes("/set/")) {
+              try {
+                const res = await fetch(item.viewerUrl);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const htmlText = await res.text();
+                const doc = parser.parseFromString(htmlText, "text/html");
+
+                // Get the set name to use as a subfolder override
+                const detectedSetName = model.getGalleryName ? model.getGalleryName(doc) : null;
+                const setSubfolder = detectedSetName ? buildSubfolder(detectedSetName, config) : "";
+
+                // Collect the real image/viewer items from this set page
+                let setRealItems: GalleryJobItem[] = [];
+                if (gc!.collectAllItems) {
+                  setRealItems = gc!.collectAllItems(doc);
+                }
+
+                // Map each item to have this set's subfolder
+                for (const realItem of setRealItems) {
+                  realItem.subfolder = setSubfolder;
+                  expandedItems.push(realItem);
+                }
+              } catch (err) {
+                console.error(`[md] failed to crawl set ${item.viewerUrl}:`, err);
+              }
+            } else {
+              expandedItems.push(item);
+            }
+          }),
+        );
+        jobItems = expandedItems;
+      }
+
       btnElement.innerHTML = loadingIcon;
 
       const jobId = crypto.randomUUID();

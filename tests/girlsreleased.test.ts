@@ -38,6 +38,56 @@ describe("GirlsReleased Hoster Model", () => {
         filename: "test_album_001",
       });
     });
+
+    it("extracts set links from anchors on site pages", () => {
+      const originalWindow = global.window;
+      global.window = {
+        location: {
+          pathname: "/site/femjoy.com",
+        },
+      } as any;
+
+      try {
+        const mockSetAnchor = {
+          href: "https://girlsreleased.com/set/154616",
+        };
+
+        const mockScope = {
+          querySelectorAll: (selector: string) => {
+            if (selector === "a") {
+              return [mockSetAnchor];
+            }
+            return [];
+          },
+          querySelector: () => ({ textContent: "femjoy.com Sets" }),
+        };
+
+        // Note: collectAllItems gets mockScope but NO root element was active on load,
+        // so to simulate site-page load we call without the second param (root=undefined)
+        // but here the test passes mockScope as the first param. Wait!
+        // The first param is root. If root is passed, isSitePage is false!
+        // To test isSitePage=true, we need root to be undefined.
+        // But scope is root ?? document. In test environment, global.document will be used if root is undefined.
+        // Let's mock global.document!
+        const originalDocument = global.document;
+        global.document = mockScope as unknown as Document;
+
+        try {
+          const items = collectAllItems!();
+          expect(items).toHaveLength(1);
+          expect(items[0]).toEqual({
+            kind: "resolve-viewer",
+            viewerUrl: "https://girlsreleased.com/set/154616",
+            extractor: "continuebutton",
+            filename: "set_placeholder",
+          });
+        } finally {
+          global.document = originalDocument;
+        }
+      } finally {
+        global.window = originalWindow;
+      }
+    });
   });
 
   describe("resolveUrl (resolveGirlsreleasedUrl)", () => {
