@@ -41,6 +41,19 @@ export function injectGalleryStyles(): void {
     .md-imgbox-gallery-btn.loading {
       pointer-events: none;
     }
+    .md-bunkr-gallery-btn {
+      display: inline-flex; align-items: center; gap: 4px;
+      margin-left: 12px; padding: 4px 10px; font-size: 13px; font-weight: 600;
+      border: 1px solid rgba(167, 139, 250, 0.35); border-radius: 9999px;
+      color: #c9b8ff !important; background: transparent; cursor: pointer;
+      text-decoration: none !important; transition: background 0.15s, border-color 0.15s, color 0.15s;
+    }
+    .md-bunkr-gallery-btn:hover {
+      background: rgba(167, 139, 250, 0.1); border-color: #a78bfa; color: #fff !important;
+    }
+    .md-bunkr-gallery-btn.loading {
+      pointer-events: none; opacity: 0.7;
+    }
     @keyframes md-spin {
       0% { transform: rotate(0deg); }
       100% { transform: rotate(360deg); }

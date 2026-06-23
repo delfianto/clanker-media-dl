@@ -212,6 +212,57 @@ export function runGalleryAdapter(model: HosterModel, config: MDConfig): void {
     return;
   }
 
+  const headerContainer = albumHeader?.parentElement;
+  if (model.id === "bunkr" && albumHeader && headerContainer) {
+    injectGalleryStyles();
+    const dlIconSvg =
+      '<svg viewBox="0 0 24 24" width="1.2em" height="1.2em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: inline-block; vertical-align: middle; margin-right: 4px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
+    const loadingIconSvg =
+      '<svg viewBox="0 0 24 24" width="1.1em" height="1.1em" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" style="display: inline-block; vertical-align: middle; animation: md-spin 1s linear infinite; margin-right: 4px;"><circle cx="12" cy="12" r="10" stroke="currentColor" opacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor"/></svg>';
+    const dlBtn = document.createElement("a");
+    dlBtn.href = "javascript:void(0);";
+    dlBtn.className = "md-bunkr-gallery-btn";
+    dlBtn.title = "Download Gallery";
+    dlBtn.innerHTML = dlIconSvg + `Download (${items.length})`;
+
+    let activeJobId = "";
+    dlBtn.addEventListener("click", () => {
+      if (activeJobId) return;
+      activeJobId = crypto.randomUUID();
+      dlBtn.innerHTML = loadingIconSvg + "Downloading...";
+      dlBtn.classList.add("loading");
+
+      const req: MDGalleryStartRequest = {
+        type: "MD_GALLERY_START",
+        jobId: activeJobId,
+        hosterId: model.id,
+        subfolder,
+        items,
+        maxParallel: config.maxParallel,
+      };
+      window.postMessage(req, "*");
+    });
+
+    window.addEventListener("message", (event) => {
+      if (event.source !== window) return;
+      const data = event.data as Record<string, unknown>;
+      if (data["type"] === "MD_JOB_PROGRESS" && data["jobId"] === activeJobId) {
+        const status = data["status"];
+        if (status === "done" || status === "error") {
+          dlBtn.innerHTML = dlIconSvg + `Download (${items.length})`;
+          dlBtn.classList.remove("loading");
+          activeJobId = "";
+        }
+      }
+    });
+
+    headerContainer.appendChild(dlBtn);
+    if (headerContainer instanceof HTMLElement) {
+      headerContainer.style.alignItems = "center";
+    }
+    return;
+  }
+
   const wrap = createDownloadAllButton(items.length, note, () => {
     const req: MDGalleryStartRequest = {
       type: "MD_GALLERY_START",
