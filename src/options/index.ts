@@ -470,6 +470,23 @@ function renderDownloadsSettings(): void {
     persist();
   });
 
+  const resetBtn = el("button", {
+    className: "reset-btn",
+    textContent: "↺ Reset Settings",
+  });
+  resetBtn.style.marginTop = "20px";
+  resetBtn.style.display = "block";
+  resetBtn.addEventListener("click", () => {
+    if (!confirm("Reset all download settings to defaults?")) return;
+    settings.maxParallel = DEFAULT_SETTINGS.maxParallel;
+    settings.downloadDirectory = DEFAULT_SETTINGS.downloadDirectory;
+    settings.autoFolderPerAlbum = DEFAULT_SETTINGS.autoFolderPerAlbum;
+    settings.verboseLogging = DEFAULT_SETTINGS.verboseLogging;
+    persist();
+    renderDownloadsSettings();
+    toast("Settings reset to defaults");
+  });
+
   container.append(
     el("div", { className: "settings-field" }, [
       el("div", {}, [
@@ -515,6 +532,7 @@ function renderDownloadsSettings(): void {
         el("span", { className: "switch" }, [verboseToggle, el("span", { className: "slider" })]),
       ]),
     ]),
+    resetBtn,
   );
 }
 

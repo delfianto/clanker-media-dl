@@ -13,7 +13,7 @@ export const DEFAULT_SETTINGS: Settings = {
     bunkr: { enabled: true, redirectRules: null, cssOverrides: "" },
   },
   maxParallel: 3,
-  downloadDirectory: "",
+  downloadDirectory: "Clanker",
   autoFolderPerAlbum: true,
-  verboseLogging: false,
+  verboseLogging: true,
 };
