@@ -82,6 +82,12 @@ async function resolveItem(item: GalleryJobItem, jobId: string): Promise<string>
     throw new Error(`extractor found no match in ${item.viewerUrl}`);
   }
 
+  // Parse filename from viewer page if possible.
+  const nameMatch = /<span[^>]+class="name text-ellipsis"[^>]*>([^<]+)<\/span>/i.exec(text);
+  if (nameMatch && nameMatch[1]) {
+    item.filename = nameMatch[1].trim();
+  }
+
   if (item.needsSign) return signBunkrUrl(rawUrl, jobId);
   return rawUrl;
 }
