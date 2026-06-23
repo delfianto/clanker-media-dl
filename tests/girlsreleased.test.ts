@@ -107,7 +107,7 @@ describe("GirlsReleased Hoster Model", () => {
             </html>
           `,
         } as any;
-      });
+      }) as unknown as typeof fetch;
 
       try {
         const directUrl = await resolveUrl!("continuebutton", "https://imx.to/i/6r3hhr");
@@ -133,7 +133,7 @@ describe("GirlsReleased Hoster Model", () => {
             </html>
           `,
         } as any;
-      });
+      }) as unknown as typeof fetch;
 
       try {
         const directUrl = await resolveUrl!("continuebutton", "https://imx.to/i/6r3hhr");

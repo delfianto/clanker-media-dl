@@ -10,8 +10,13 @@
     "exactOptionalPropertyTypes": true,
     "noUncheckedSideEffectImports": true,
     "skipLibCheck": true,
-    "noEmit": true
+    "noEmit": true,
+    // @types auto-include isn't active here (only import-driven types load), so
+    // name the global type packages explicitly. "bun" registers the bun:test
+    // module + Bun globals for tests/. Import-driven types (webextension-polyfill,
+    // vite-plus's node/chai) load regardless of this list.
+    "types": ["bun"]
   },
-  "include": ["src/**/*", "vite.config.ts"],
+  "include": ["src/**/*", "tests/**/*", "vite.config.ts"],
   "exclude": ["build", "node_modules"]
 }
