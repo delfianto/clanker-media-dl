@@ -22,16 +22,15 @@ function ensureStyles(): void {
       border-radius: 50%; animation: md-spin 0.8s linear infinite;
       vertical-align: middle;
     }
-    .md-action-group { display: inline-flex; gap: 6px; align-items: center; }
-    .md-action-btn {
-      background: transparent; border: 1px solid rgba(127,127,127,0.4);
-      color: inherit; border-radius: 4px; padding: 4px 12px;
-      font-size: 12px; font-family: inherit; cursor: pointer;
-      min-width: 72px; text-align: center;
-      transition: background 0.15s, border-color 0.15s;
+    .md-icon-group { display: inline-flex; gap: 2px; align-items: center; vertical-align: middle; }
+    .md-icon-btn {
+      background: transparent; border: none; color: inherit;
+      padding: 4px 7px; border-radius: 4px; cursor: pointer;
+      font-size: 14px; line-height: 1; opacity: 0.65;
+      transition: opacity 0.15s, background 0.15s;
     }
-    .md-action-btn:hover { background: rgba(127,127,127,0.1); border-color: rgba(127,127,127,0.7); }
-    .md-action-btn.md-btn-busy { pointer-events: none; opacity: 0.55; }
+    .md-icon-btn:hover { opacity: 1; background: rgba(127,127,127,0.12); }
+    .md-icon-btn.md-btn-busy { pointer-events: none; opacity: 0.35; }
     @keyframes md-spin { to { transform: rotate(360deg); } }
   `;
   (document.head ?? document.documentElement).appendChild(style);
