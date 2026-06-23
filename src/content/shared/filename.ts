@@ -16,6 +16,19 @@ function urlSlug(): string {
   return location.pathname.split("/").filter(Boolean).at(-1) ?? "";
 }
 
+// Pure function: given a filename and a file ID (from URL), return the file ID
+// as the name (preserving extension) when the filename's base is a UUID.
+// Exported for unit testing.
+export function resolveUuidFallback(origName: string, fileId: string): string {
+  const dot = origName.lastIndexOf(".");
+  const base = dot >= 0 ? origName.slice(0, dot) : origName;
+  const ext = dot >= 0 ? origName.slice(dot + 1) : "";
+  if (!UUID_RE.test(base)) return origName;
+
+  const newName = V1_RE.exec(fileId)?.[1] ?? fileId;
+  return ext ? `${newName}.${ext}` : newName;
+}
+
 // Resolve the download filename from a hoster's FilenameStrategy.
 export function resolveFilename(strategy: FilenameStrategy): string {
   switch (strategy.type) {
@@ -26,18 +39,8 @@ export function resolveFilename(strategy: FilenameStrategy): string {
       return urlSlug();
 
     case "uuid-fallback": {
-      // imagebam often assigns a UUID as the server filename. When it does,
-      // prefer the page's URL slug (or its trailing numeric segment) instead,
-      // keeping the original extension.
       const origName = readDom(strategy.domSelector);
-      const dot = origName.lastIndexOf(".");
-      const base = dot >= 0 ? origName.slice(0, dot) : origName;
-      const ext = dot >= 0 ? origName.slice(dot + 1) : "";
-      if (!UUID_RE.test(base)) return origName;
-
-      const fileId = urlSlug();
-      const newName = V1_RE.exec(fileId)?.[1] ?? fileId;
-      return ext ? `${newName}.${ext}` : newName;
+      return resolveUuidFallback(origName, urlSlug());
     }
   }
 }

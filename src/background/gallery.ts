@@ -8,6 +8,8 @@ import type { DownloadJob } from "../types/jobs";
 import { crossOriginFetchText } from "./fetcher";
 import { appendLog } from "./logger";
 import { getModel } from "../hosts/index";
+import { isMediaFile, isTransientError } from "./media-util";
+import { sanitizeFilename } from "./sanitize";
 
 const JOBS_KEY = "downloadJobs";
 
@@ -183,23 +185,7 @@ async function resolveItem(item: GalleryJobItem, jobId: string, hosterId: string
 
 // ── Concurrency queue ────────────────────────────────────────────────────────
 
-// Chrome download interruptions that are worth retrying — the CDN throttled
-// us, the network blipped, the connection dropped mid-transfer, or the SW
-// crashed. These are not permanent file problems; the same URL will likely
-// succeed on retry. SERVER_CONTENT_LENGTH_MISMATCH is common on large video
-// files when the CDN connection drops before all bytes arrive.
-const RETRYABLE_ERRORS = [
-  "SERVER_FAILED",
-  "SERVER_CONTENT_LENGTH_MISMATCH",
-  "NETWORK_FAILED",
-  "CRASH",
-];
 const MAX_DOWNLOAD_RETRIES = 3;
-
-function isTransientError(err: unknown): boolean {
-  const msg = String(err);
-  return RETRYABLE_ERRORS.some((e) => msg.includes(e));
-}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
@@ -264,7 +250,8 @@ async function runQueue(
         item.kind === "resolve-viewer" && !item.filename.includes(".")
           ? (new URL(imageUrl).pathname.split("/").at(-1) ?? item.filename)
           : item.filename;
-      const filePath = job.subfolder ? `${job.subfolder}/${resolvedFilename}` : resolvedFilename;
+      const safeFilename = sanitizeFilename(resolvedFilename);
+      const filePath = job.subfolder ? `${job.subfolder}/${safeFilename}` : safeFilename;
 
       try {
         let succeeded = false;
@@ -274,7 +261,7 @@ async function runQueue(
             const backoff = 1000 * 2 ** (attempt - 1);
             void appendLog(
               "debug",
-              `Retry ${attempt}/${MAX_DOWNLOAD_RETRIES} for ${resolvedFilename} in ${backoff}ms`,
+              `Retry ${attempt}/${MAX_DOWNLOAD_RETRIES} for ${safeFilename} in ${backoff}ms`,
               job.jobId,
             );
             await sleep(backoff);
@@ -294,7 +281,7 @@ async function runQueue(
           job.completedCount++;
           if (job.items?.[idx]) {
             job.items[idx].status = "done";
-            job.items[idx].filename = resolvedFilename;
+            job.items[idx].filename = safeFilename;
           }
           void appendLog("debug", `Downloaded: ${filePath}`, job.jobId);
         } else {
@@ -325,36 +312,6 @@ async function runQueue(
 }
 
 // ── Public API ───────────────────────────────────────────────────────────────
-
-// Video/audio extensions — these files are large and CDNs throttle parallel
-// downloads, so they get a separate (lower) parallelism setting.
-const MEDIA_EXTS = new Set([
-  "mp4",
-  "mov",
-  "mkv",
-  "webm",
-  "avi",
-  "m4v",
-  "wmv",
-  "flv",
-  "mpg",
-  "mpeg",
-  "ts",
-  "3gp",
-  "mp3",
-  "wav",
-  "flac",
-  "aac",
-  "ogg",
-  "m4a",
-  "opus",
-  "wma",
-]);
-
-function isMediaFile(filename: string): boolean {
-  const ext = filename.split(".").pop()?.toLowerCase();
-  return ext ? MEDIA_EXTS.has(ext) : false;
-}
 
 export async function startGalleryJob(req: MDGalleryStartRequest): Promise<void> {
   const job: DownloadJob = {

@@ -10,7 +10,8 @@
     "dev": "vp build --watch",
     "check": "vp check",
     "lint": "vp lint src/",
-    "fmt": "vp fmt src/"
+    "fmt": "vp fmt src/",
+    "test": "bun test"
   },
   "dependencies": {
     "webextension-polyfill": "^0.12.0"

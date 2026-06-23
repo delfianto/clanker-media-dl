@@ -7,6 +7,7 @@ import type {
 } from "../types/messages";
 import { crossOriginFetchBlob } from "./fetcher";
 import { startGalleryJob, listJobs, resumeRunningJobs } from "./gallery";
+import { sanitizeFilename } from "./sanitize";
 
 // Recover any jobs that were mid-flight when the SW was last terminated.
 void resumeRunningJobs();
@@ -31,7 +32,8 @@ browser.runtime.onMessage.addListener((msg: unknown): Promise<AnyResponse> | und
     typeof m["filename"] === "string"
   ) {
     const req = m as { url: string; filename: string; subfolder: string };
-    const filePath = req.subfolder ? `${req.subfolder}/${req.filename}` : req.filename;
+    const safeName = sanitizeFilename(req.filename);
+    const filePath = req.subfolder ? `${req.subfolder}/${safeName}` : safeName;
     return browser.downloads
       .download({
         url: req.url,

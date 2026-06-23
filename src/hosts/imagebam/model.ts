@@ -6,7 +6,7 @@ import type { HosterModel } from "../../types/hoster";
 // warrant using the file ID from the URL instead.
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-function isBizarreName(name: string): boolean {
+export function isBizarreName(name: string): boolean {
   const dot = name.lastIndexOf(".");
   const base = dot >= 0 ? name.slice(0, dot) : name;
   if (!base) return true;
