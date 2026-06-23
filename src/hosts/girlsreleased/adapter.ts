@@ -13,7 +13,11 @@ export function activate(_model: HosterModel, _config: MDConfig): void {
 
 export function activateGallery(_model: HosterModel, ctx: GalleryCtx): void {
   const title = document.querySelector("h1");
-  if (!title) return;
+  console.log("[md] activateGallery: document.querySelector('h1') =", title);
+  if (!title) {
+    console.error("[md] activateGallery: Failed to find h1 element!");
+    return;
+  }
 
   injectGalleryStyles();
   injectHosterStyles(
@@ -52,4 +56,5 @@ export function activateGallery(_model: HosterModel, ctx: GalleryCtx): void {
 
   wireGalleryButton(dlBtn, loadingIcon, dlIcon, ctx.triggerDownload);
   title.after(dlBtn);
+  console.log("[md] activateGallery: button appended to DOM after title, dlBtn:", dlBtn);
 }
