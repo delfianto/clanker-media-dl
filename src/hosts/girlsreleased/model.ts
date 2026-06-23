@@ -92,6 +92,7 @@ export const girlsreleasedModel: HosterModel = {
       imageSelector: "#root img",
     },
     collectAllItems: collectGirlsreleasedItems,
+    extractFromViewer: () => ({ url: "dummy" }),
     resolveUrl: resolveGirlsreleasedUrl,
   },
   getGalleryName: (doc: Document) => {
