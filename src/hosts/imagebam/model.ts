@@ -38,11 +38,16 @@ export const imagebamModel: HosterModel = {
     albumNameSelector: "h1",
     albumIdFromPath: "^/(?:view|gallery)/([A-Z0-9]+)$",
     imageSource: {
-      strategy: "resolve-viewer",
-      // Gallery thumbnail list: <li><img src="thumbs4..."><a href="/view/{imgId}">...</a></li>
-      anchorSelector: "li a[href*='/view/']",
-      // SW fetches each viewer page HTML; group 1 = the CDN src on img.main-image
-      extractor: 'img\\.main-image[^>]+src="([^"]+)"',
+      strategy: "thumbnail-transform",
+      // Gallery grid: <li><img src="https://thumbs4.imagebam.com/.../ID_t.jpg"></li>
+      // Viewer pages are JS-rendered so the SW can't extract image URLs from raw HTML.
+      // The gallery DOM already has thumbnail CDN paths — transform thumbsN→imagesN
+      // and _t./_o. suffix → _o. to get the full-res original.
+      selector: "li img[src*='.imagebam.com']",
+      buildUrl: (thumb: string) =>
+        thumb
+          .replace(/thumbs(\d+)\.imagebam\.com/, "images$1.imagebam.com")
+          .replace(/_[ot]\./, "_o."),
     },
   },
 };
