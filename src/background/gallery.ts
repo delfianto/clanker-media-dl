@@ -48,6 +48,7 @@ function broadcastProgress(job: DownloadJob): void {
     totalCount: job.totalCount,
     failedCount: job.failedCount,
     status: job.status,
+    items: job.items,
   };
   void browser.runtime.sendMessage(msg).catch(() => {});
 }
@@ -100,11 +101,11 @@ async function runQueue(
       const item = items[idx];
       if (!item) continue;
 
-      void appendLog(
-        "debug",
-        `Item ${idx + 1}/${items.length}: ${item.kind === "resolved" ? item.imageUrl : item.viewerUrl}`,
-        job.jobId,
-      );
+      if (job.items?.[idx]) {
+        job.items[idx].status = "running";
+        await upsertJob(job);
+        broadcastProgress(job);
+      }
 
       let imageUrl: string;
       try {
@@ -117,6 +118,10 @@ async function runQueue(
         );
         job.failedCount++;
         job.completedCount++;
+        if (job.items?.[idx]) {
+          job.items[idx].status = "error";
+          job.items[idx].error = String(resolveErr);
+        }
         await upsertJob(job);
         broadcastProgress(job);
         continue;
@@ -138,6 +143,10 @@ async function runQueue(
           conflictAction: "uniquify",
         });
         job.completedCount++;
+        if (job.items?.[idx]) {
+          job.items[idx].status = "done";
+          job.items[idx].filename = resolvedFilename;
+        }
         void appendLog("debug", `Queued download: ${filePath}`, job.jobId);
       } catch (dlErr) {
         void appendLog(
@@ -147,6 +156,10 @@ async function runQueue(
         );
         job.failedCount++;
         job.completedCount++;
+        if (job.items?.[idx]) {
+          job.items[idx].status = "error";
+          job.items[idx].error = String(dlErr);
+        }
       }
       await upsertJob(job);
       broadcastProgress(job);
@@ -178,6 +191,11 @@ export async function startGalleryJob(req: MDGalleryStartRequest): Promise<void>
     failedCount: 0,
     status: "running",
     startedAt: Date.now(),
+    items: req.items.map((item) => ({
+      displayName: item.kind === "resolve-viewer" ? item.viewerUrl : item.imageUrl,
+      filename: item.filename,
+      status: "pending" as const,
+    })),
   };
   await upsertJob(job);
   broadcastProgress(job);
