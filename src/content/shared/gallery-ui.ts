@@ -36,18 +36,10 @@ export function injectGalleryStyles(): void {
       opacity: 1;
     }
     .md-imgbox-gallery-btn {
-      color: inherit;
       cursor: pointer;
-      opacity: 0.6;
-      font-size: 0.9em;
-      transition: opacity 0.15s;
-    }
-    .md-imgbox-gallery-btn:hover {
-      opacity: 1;
     }
     .md-imgbox-gallery-btn.loading {
       pointer-events: none;
-      opacity: 1;
     }
     @keyframes md-spin {
       0% { transform: rotate(0deg); }
