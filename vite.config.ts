@@ -1,5 +1,6 @@
 import { defineConfig } from "vite-plus";
 import webExtension from "vite-plugin-web-extension";
+import { BUNKR_DOMAINS } from "./src/hosts/bunkr/model";
 
 type Browser = "chrome" | "firefox";
 
@@ -14,33 +15,11 @@ const CONTENT_MATCHES = [
   "https://www.imagebam.com/gallery/*", // legacy gallery pages
   "https://imgbox.com/*",
   "https://ibb.co/*",
-  "https://bunkr.site/f/*",
-  "https://bunkr.su/f/*",
-  "https://bunkr.is/f/*",
-  "https://bunkr.black/f/*",
-  "https://bunkr.fi/f/*",
-  "https://bunkr.ac/f/*",
-  "https://bunkr.cat/f/*",
-  "https://bunkr.ws/f/*",
-  "https://bunkr.ph/f/*",
-  "https://bunkr.red/f/*",
-  "https://bunkr.media/f/*",
-  "https://bunkr.cr/f/*",
-  // Gallery pages (new)
+  ...BUNKR_DOMAINS.map((d) => `https://${d}/f/*`),
+  // Gallery pages
   "https://imgbox.com/g/*",
   "https://ibb.co/album/*",
-  "https://bunkr.site/a/*",
-  "https://bunkr.su/a/*",
-  "https://bunkr.is/a/*",
-  "https://bunkr.black/a/*",
-  "https://bunkr.fi/a/*",
-  "https://bunkr.ac/a/*",
-  "https://bunkr.cat/a/*",
-  "https://bunkr.ws/a/*",
-  "https://bunkr.ph/a/*",
-  "https://bunkr.red/a/*",
-  "https://bunkr.media/a/*",
-  "https://bunkr.cr/a/*",
+  ...BUNKR_DOMAINS.map((d) => `https://${d}/a/*`),
 ] as const;
 
 // CDN domains — where the redirector intercepts raw image URLs at document_start.
@@ -65,18 +44,7 @@ function makeManifest(target: Browser): Record<string, unknown> {
       "https://*.imgbb.com/*",
       "https://*.cdn.cr/*",
       // bunkr — needed for SW to fetch album/viewer pages for gallery resolution
-      "https://bunkr.site/*",
-      "https://bunkr.su/*",
-      "https://bunkr.is/*",
-      "https://bunkr.black/*",
-      "https://bunkr.fi/*",
-      "https://bunkr.ac/*",
-      "https://bunkr.cat/*",
-      "https://bunkr.ws/*",
-      "https://bunkr.ph/*",
-      "https://bunkr.red/*",
-      "https://bunkr.media/*",
-      "https://bunkr.cr/*",
+      ...BUNKR_DOMAINS.map((d) => `https://${d}/*`),
     ],
     background: { service_worker: "src/background/index.ts", type: "module" },
     action: {
