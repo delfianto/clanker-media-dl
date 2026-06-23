@@ -17,16 +17,19 @@ function ensureStyles(): void {
   style.textContent = `
     .md-btn-busy { pointer-events: none; opacity: 0.6; }
     .md-inline-spinner {
-      display: inline-block; width: 14px; height: 14px;
+      display: inline-block; width: 18px; height: 18px;
       border: 2px solid rgba(127,127,127,0.35); border-top-color: currentColor;
       border-radius: 50%; animation: md-spin 0.8s linear infinite;
       vertical-align: middle;
     }
-    .md-icon-group { display: inline-flex; gap: 2px; align-items: center; vertical-align: middle; }
+    .md-icon-group {
+      position: absolute; top: 8px; right: 0;
+      display: inline-flex; gap: 2px; align-items: center;
+    }
     .md-icon-btn {
       background: transparent; border: none; color: inherit;
-      padding: 4px 7px; border-radius: 4px; cursor: pointer;
-      font-size: 14px; line-height: 1; opacity: 0.65;
+      padding: 4px 8px; border-radius: 4px; cursor: pointer;
+      font-size: 22px; line-height: 1; opacity: 0.65;
       transition: opacity 0.15s, background 0.15s;
     }
     .md-icon-btn:hover { opacity: 1; background: rgba(127,127,127,0.12); }
