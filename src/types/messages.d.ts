@@ -65,7 +65,8 @@ export type MDGalleryStartRequest = {
   hosterId: HosterId;
   subfolder: string;
   items: GalleryJobItem[];
-  maxParallel: number;
+  maxParallelImg: number;
+  maxParallelVid: number;
 };
 
 // SW → options page (via chrome.runtime.sendMessage — bypasses MAIN/ISOLATED relay).

@@ -427,18 +427,33 @@ function renderDownloadsSettings(): void {
   const container = $("dl-settings");
   container.replaceChildren();
 
-  // Max parallel
+  // Max parallel (images)
   const parallelInput = el("input", {
     type: "number",
     className: "narrow",
-    value: String(settings.maxParallel),
+    value: String(settings.maxParallelImg),
     min: "1",
     max: "10",
   } as Partial<HTMLInputElement>);
   parallelInput.addEventListener("change", () => {
-    const v = Math.min(10, Math.max(1, Number(parallelInput.value) || 3));
+    const v = Math.min(10, Math.max(1, Number(parallelInput.value) || 5));
     parallelInput.value = String(v);
-    settings.maxParallel = v;
+    settings.maxParallelImg = v;
+    persistSoon();
+  });
+
+  // Max parallel (videos)
+  const parallelVideoInput = el("input", {
+    type: "number",
+    className: "narrow",
+    value: String(settings.maxParallelVid),
+    min: "1",
+    max: "5",
+  } as Partial<HTMLInputElement>);
+  parallelVideoInput.addEventListener("change", () => {
+    const v = Math.min(5, Math.max(1, Number(parallelVideoInput.value) || 1));
+    parallelVideoInput.value = String(v);
+    settings.maxParallelVid = v;
     persistSoon();
   });
 
@@ -478,7 +493,8 @@ function renderDownloadsSettings(): void {
   resetBtn.style.display = "block";
   resetBtn.addEventListener("click", () => {
     if (!confirm("Reset all download settings to defaults?")) return;
-    settings.maxParallel = DEFAULT_SETTINGS.maxParallel;
+    settings.maxParallelImg = DEFAULT_SETTINGS.maxParallelImg;
+    settings.maxParallelVid = DEFAULT_SETTINGS.maxParallelVid;
     settings.downloadDirectory = DEFAULT_SETTINGS.downloadDirectory;
     settings.autoFolderPerAlbum = DEFAULT_SETTINGS.autoFolderPerAlbum;
     settings.verboseLogging = DEFAULT_SETTINGS.verboseLogging;
@@ -490,10 +506,20 @@ function renderDownloadsSettings(): void {
   container.append(
     el("div", { className: "settings-field" }, [
       el("div", {}, [
-        el("div", { className: "settings-label", textContent: "Max parallel downloads" }),
-        el("div", { className: "settings-hint", textContent: "1–10 files at a time" }),
+        el("div", { className: "settings-label", textContent: "Max parallel — images" }),
+        el("div", { className: "settings-hint", textContent: "1–10 image files at a time" }),
       ]),
       parallelInput,
+    ]),
+    el("div", { className: "settings-field" }, [
+      el("div", {}, [
+        el("div", { className: "settings-label", textContent: "Max parallel — videos" }),
+        el("div", {
+          className: "settings-hint",
+          textContent: "1–5 video/audio files at a time (CDNs throttle large files)",
+        }),
+      ]),
+      parallelVideoInput,
     ]),
     el("div", { className: "settings-field" }, [
       el("div", {}, [
@@ -604,7 +630,7 @@ async function loadHistoryTab(): Promise<void> {
 
 // ── Tabs ──────────────────────────────────────────────
 type Tab = "hosters" | "downloads";
-let activeTab: Tab = "hosters";
+let activeTab: Tab = "downloads";
 
 function switchDlSubTab(tab: DlSubTab): void {
   activeDlSubTab = tab;
@@ -659,7 +685,8 @@ async function init(): Promise<void> {
     settings.hosters[model.id] ??= clone(DEFAULT_SETTINGS.hosters[model.id]);
   }
   // Heal missing gallery/log settings (upgrade from older storage schema).
-  settings.maxParallel ??= DEFAULT_SETTINGS.maxParallel;
+  settings.maxParallelImg ??= DEFAULT_SETTINGS.maxParallelImg;
+  settings.maxParallelVid ??= DEFAULT_SETTINGS.maxParallelVid;
   settings.downloadDirectory ??=
     (settings as any).subfolderPrefix ?? DEFAULT_SETTINGS.downloadDirectory;
   settings.autoFolderPerAlbum ??= DEFAULT_SETTINGS.autoFolderPerAlbum;
@@ -795,6 +822,7 @@ async function init(): Promise<void> {
 
   renderSidebar();
   renderPanel();
+  switchTab("downloads");
 }
 
 void init();
