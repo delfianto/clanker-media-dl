@@ -12,6 +12,7 @@ export const DEFAULT_SETTINGS: Settings = {
     imgbb: { enabled: true, redirectRules: null, cssOverrides: "" },
     bunkr: { enabled: true, redirectRules: null, cssOverrides: "" },
     erome: { enabled: true, redirectRules: null, cssOverrides: "" },
+    jpg6: { enabled: true, redirectRules: null, cssOverrides: "" },
   },
   maxParallelImg: 5,
   maxParallelVid: 1,

@@ -5,7 +5,7 @@
 
 import type { GalleryJobItem } from "./messages";
 
-export type HosterId = "imagebam" | "imgbox" | "imgbb" | "bunkr" | "erome";
+export type HosterId = "imagebam" | "imgbox" | "imgbb" | "bunkr" | "erome" | "jpg6";
 
 export type RedirectRule = {
   id: string; // stable slug for user-override keying, e.g. "imagebam-new"
@@ -86,6 +86,7 @@ export type GalleryConfig = {
   // hoster, items whose filename matches this test use the file ID from the
   // anchor href instead.
   isBizarreName?: (name: string) => boolean;
+  pathGuard?: string; // runtime regex on location.pathname before activating (jpg6 / user pages)
 };
 
 export type HosterModel = {
