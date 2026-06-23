@@ -12,41 +12,52 @@ export function activate(_model: HosterModel, _config: MDConfig): void {
 }
 
 export function activateGallery(_model: HosterModel, ctx: GalleryCtx): void {
-  const title = document.querySelector("h1");
-  console.log("[md] activateGallery: document.querySelector('h1') =", title);
-  if (!title) {
-    console.error("[md] activateGallery: Failed to find h1 element!");
-    return;
-  }
-
   injectGalleryStyles();
   injectHosterStyles(
     "girlsreleased",
     `
     .md-girlsreleased-gallery-btn {
-      margin-left: 12px;
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      z-index: 2147483647;
+      padding: 12px 24px;
       font-size: 14px;
-      padding: 6px 12px;
+      font-weight: 600;
+      color: #ffffff;
+      background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+      border: none;
+      border-radius: 30px;
+      box-shadow: 0 10px 25px rgba(59, 130, 246, 0.4);
       cursor: pointer;
-      border-radius: 4px;
-      border: 1px solid #ccc;
-      background: #f0f0f0;
-      color: #333;
       display: inline-flex;
       align-items: center;
       vertical-align: middle;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      transition: all 0.2s ease-in-out;
+    }
+    .md-girlsreleased-gallery-btn:hover:not(.loading) {
+      transform: translateY(-2px);
+      box-shadow: 0 15px 30px rgba(59, 130, 246, 0.5);
+      background: linear-gradient(135deg, #2563eb, #1e40af);
+    }
+    .md-girlsreleased-gallery-btn:active:not(.loading) {
+      transform: translateY(0);
     }
     .md-girlsreleased-gallery-btn.loading {
+      background: #4b5563;
+      box-shadow: none;
+      cursor: default;
       pointer-events: none;
-      opacity: 0.6;
+      opacity: 0.8;
     }
     `,
   );
 
   const dlIcon =
-    '<span class="btn-icon" style="margin-right: 4px;">📥</span> <span class="btn-text">Download Gallery</span>';
+    '<span class="btn-icon" style="margin-right: 6px; font-size: 16px;">📥</span> <span class="btn-text">Download Gallery</span>';
   const loadingIcon =
-    '<span class="btn-icon" style="margin-right: 4px;">⏳</span> <span class="btn-text">Downloading...</span>';
+    '<span class="btn-icon" style="margin-right: 6px; font-size: 16px;">⏳</span> <span class="btn-text">Downloading...</span>';
 
   const dlBtn = document.createElement("button");
   dlBtn.type = "button";
@@ -55,6 +66,6 @@ export function activateGallery(_model: HosterModel, ctx: GalleryCtx): void {
   dlBtn.innerHTML = dlIcon;
 
   wireGalleryButton(dlBtn, loadingIcon, dlIcon, ctx.triggerDownload);
-  title.after(dlBtn);
-  console.log("[md] activateGallery: button appended to DOM after title, dlBtn:", dlBtn);
+  document.body.appendChild(dlBtn);
+  console.log("[md] activateGallery: floating button appended to document.body, dlBtn:", dlBtn);
 }
