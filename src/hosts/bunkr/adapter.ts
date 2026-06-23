@@ -12,13 +12,17 @@ export function activate(model: HosterModel, config: MDConfig): void {
   button.addEventListener("click", (event) => {
     event.preventDefault();
 
-    // Read the signed CDN URL at click time: page JS sets #img-main.src
-    // asynchronously via glb-apisign.cdn.cr/sign. By click time the image
-    // is visible on screen, so the URL is always ready.
+    // Read the signed CDN URL at click time: page JS sets #img-main.src (for images)
+    // or creates #player source (for videos) asynchronously via glb-apisign.cdn.cr/sign.
+    // By click time the media is loaded, so the URL is always ready.
     const img = cfg.imageSelector
       ? document.querySelector<HTMLImageElement>(cfg.imageSelector)
       : null;
-    const url = img?.src;
+    let url = img?.src;
+    if (!url) {
+      const source = document.querySelector<HTMLSourceElement>("#player source");
+      url = source?.src;
+    }
     if (!url?.startsWith("http")) return;
 
     void downloadBlob(url, resolveFilename(cfg.filenameStrategy) || "download", config, model);

@@ -50,7 +50,7 @@ export const bunkrModel: HosterModel = {
       // Album grid: <a href="/f/{fileId}">...</a> links to the file viewer page.
       // SW fetches each viewer HTML; group 1 = jsCDN (unsigned CDN URL).
       anchorSelector: "a[href*='/f/']",
-      extractor: 'var jsCDN = "([^"]+)"',
+      extractor: 'var jsCDN\\s*=\\s*"([^"]+)"',
       needsSign: true,
     },
   },
