@@ -12,7 +12,7 @@
 //     ISOLATED decodes the base64 back into an ArrayBuffer and transfers it
 //     zero-copy (see MDMainResponse + the [buffer] transferable).
 
-import type { DownloadJob, DownloadLog } from "./jobs";
+import type { DownloadJob, DownloadLog, DownloadJobItem } from "./jobs";
 import type { HosterId } from "./hoster";
 
 // ── Single-image download (existing) ────────────────────────────────────────
@@ -76,6 +76,7 @@ export type MDJobProgressMessage = {
   totalCount: number;
   failedCount: number;
   status: "running" | "done" | "error";
+  items?: DownloadJobItem[];
 };
 
 // Options page → SW: request the current job list for the Downloads tab.

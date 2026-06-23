@@ -13,6 +13,13 @@ export type DownloadLog = {
   jobId?: string;
 };
 
+export type DownloadJobItem = {
+  displayName: string;
+  filename: string;
+  status: "pending" | "running" | "done" | "error";
+  error?: string;
+};
+
 // Persisted in chrome.storage.local under key "downloadJobs" as DownloadJob[].
 // Written by the SW; read by the options page Downloads tab.
 export type DownloadJob = {
@@ -24,4 +31,5 @@ export type DownloadJob = {
   failedCount: number;
   status: DownloadJobStatus;
   startedAt: number;
+  items?: DownloadJobItem[];
 };

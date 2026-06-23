@@ -333,6 +333,7 @@ function renderPanel(): void {
 let dlRefreshTimer: ReturnType<typeof setInterval> | undefined;
 type DlSubTab = "settings" | "history" | "logs";
 let activeDlSubTab: DlSubTab = "settings";
+const expandedJobIds = new Set<string>();
 
 function formatJobStatus(job: DownloadJob): string {
   if (job.status === "running") return `${job.completedCount} / ${job.totalCount}`;
@@ -353,23 +354,75 @@ function renderJobCard(job: DownloadJob): HTMLElement {
   progress.setAttribute("value", String(job.completedCount));
   progress.setAttribute("max", String(job.totalCount));
 
-  return el("div", { className: "job-card", id: `job-${job.jobId}` }, [
-    el("div", { className: "job-header" }, [
-      el("span", { className: "job-title", textContent: job.subfolder || job.hosterId }),
-      el("span", { className: `job-status ${statusClass}`, textContent: formatJobStatus(job) }),
-    ]),
-    progress,
-    el("div", { className: "job-meta" }, [
-      el("span", {
-        className: "job-pct",
-        textContent: `${Math.round(pct * 100)}%`,
-      }),
-      el("span", {
-        className: "job-hoster",
-        textContent: job.hosterId,
-      }),
-    ]),
-  ]);
+  const isExpanded = expandedJobIds.has(job.jobId);
+  const itemsContainer = el("div", { className: "job-items", hidden: !isExpanded });
+  if (job.items && job.items.length > 0) {
+    for (const item of job.items) {
+      const statusIcon =
+        item.status === "done"
+          ? "✓"
+          : item.status === "error"
+            ? "✗"
+            : item.status === "running"
+              ? "●"
+              : "○";
+      const itemStatusClass = `item-status ${item.status}`;
+      const itemEl = el("div", { className: "job-item" }, [
+        el("span", { className: itemStatusClass, textContent: statusIcon }),
+        el("span", {
+          className: "item-filename",
+          textContent: item.filename,
+          title: item.displayName,
+        }),
+      ]);
+      if (item.error) {
+        itemEl.append(el("span", { className: "item-error", textContent: ` (${item.error})` }));
+      }
+      itemsContainer.append(itemEl);
+    }
+  }
+
+  const card = el(
+    "div",
+    { className: isExpanded ? "job-card expanded" : "job-card", id: `job-${job.jobId}` },
+    [
+      el("div", { className: "job-header" }, [
+        el("span", { className: "job-title", textContent: job.subfolder || job.hosterId }),
+        el("span", { className: `job-status ${statusClass}`, textContent: formatJobStatus(job) }),
+      ]),
+      progress,
+      el("div", { className: "job-meta" }, [
+        el("span", {
+          className: "job-pct",
+          textContent: `${Math.round(pct * 100)}%`,
+        }),
+        el("span", {
+          className: "job-hoster",
+          textContent: job.hosterId,
+        }),
+      ]),
+      itemsContainer,
+    ],
+  );
+
+  card.addEventListener("click", (event) => {
+    const target = event.target as HTMLElement;
+    if (target.closest(".job-items")) return;
+
+    event.stopPropagation();
+    const isHidden = itemsContainer.hasAttribute("hidden");
+    if (isHidden) {
+      itemsContainer.removeAttribute("hidden");
+      card.classList.add("expanded");
+      expandedJobIds.add(job.jobId);
+    } else {
+      itemsContainer.setAttribute("hidden", "");
+      card.classList.remove("expanded");
+      expandedJobIds.delete(job.jobId);
+    }
+  });
+
+  return card;
 }
 
 function renderDownloadsSettings(): void {
@@ -510,6 +563,7 @@ async function loadHistoryTab(): Promise<void> {
   try {
     const res = (await browser.runtime.sendMessage({ type: "MD_LIST_JOBS" })) as MDListJobsResponse;
     jobsContainer.replaceChildren();
+    $("history-count").textContent = `${res.jobs.length} jobs`;
     if (res.jobs.length === 0) {
       jobsContainer.append(
         el("p", { className: "default-note", textContent: "No downloads yet." }),
@@ -611,6 +665,16 @@ async function init(): Promise<void> {
     });
   });
 
+  $("btn-clear-history").addEventListener("click", () => {
+    void browser.storage.local.set({ downloadJobs: [] }).then(() => {
+      expandedJobIds.clear();
+      $("history-count").textContent = "0 jobs";
+      $("dl-jobs").replaceChildren(
+        el("p", { className: "default-note", textContent: "No downloads yet." }),
+      );
+    });
+  });
+
   // Live messages from the SW while the Downloads tab is open.
   browser.runtime.onMessage.addListener((msg: unknown) => {
     if (activeTab !== "downloads") return;
@@ -643,6 +707,34 @@ async function init(): Promise<void> {
       const total = prog.totalCount ?? 0;
       if (pctEl && total > 0)
         pctEl.textContent = `${Math.round(((prog.completedCount ?? 0) / total) * 100)}%`;
+
+      const itemsContainer = card.querySelector<HTMLElement>(".job-items");
+      if (itemsContainer && prog.items) {
+        itemsContainer.replaceChildren();
+        for (const item of prog.items) {
+          const statusIcon =
+            item.status === "done"
+              ? "✓"
+              : item.status === "error"
+                ? "✗"
+                : item.status === "running"
+                  ? "●"
+                  : "○";
+          const itemStatusClass = `item-status ${item.status}`;
+          const itemEl = el("div", { className: "job-item" }, [
+            el("span", { className: itemStatusClass, textContent: statusIcon }),
+            el("span", {
+              className: "item-filename",
+              textContent: item.filename,
+              title: item.displayName,
+            }),
+          ]);
+          if (item.error) {
+            itemEl.append(el("span", { className: "item-error", textContent: ` (${item.error})` }));
+          }
+          itemsContainer.append(itemEl);
+        }
+      }
     }
 
     // ── Log entry → Logs tab ──
