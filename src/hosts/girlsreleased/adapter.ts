@@ -13,27 +13,25 @@ export function activate(_model: HosterModel, _config: MDConfig): void {
 
 export function activateGallery(_model: HosterModel, ctx: GalleryCtx): void {
   console.log("[md] DOM Inspection:");
-  console.log(
-    "[md] h1 elements:",
-    Array.from(document.querySelectorAll("h1")).map((el) => ({
-      text: el.textContent?.trim(),
-      html: el.outerHTML,
-    })),
-  );
-  console.log(
-    "[md] h2 elements:",
-    Array.from(document.querySelectorAll("h2")).map((el) => ({
-      text: el.textContent?.trim(),
-      html: el.outerHTML,
-    })),
-  );
-  console.log(
-    "[md] site links:",
-    Array.from(document.querySelectorAll('a[href*="/site/"]')).map((el) => ({
-      href: el.getAttribute("href"),
-      text: el.textContent?.trim(),
-    })),
-  );
+  const h1s = document.querySelectorAll("h1");
+  console.log("[md] h1 elements count:", h1s.length);
+  h1s.forEach((el, i) => {
+    console.log(`[md] h1 #${i}: text="${el.textContent?.trim()}" html="${el.outerHTML}"`);
+  });
+
+  const h2s = document.querySelectorAll("h2");
+  console.log("[md] h2 elements count:", h2s.length);
+  h2s.forEach((el, i) => {
+    console.log(`[md] h2 #${i}: text="${el.textContent?.trim()}" html="${el.outerHTML}"`);
+  });
+
+  const links = document.querySelectorAll('a[href*="/site/"]');
+  console.log("[md] site links count:", links.length);
+  links.forEach((el, i) => {
+    console.log(
+      `[md] site link #${i}: text="${el.textContent?.trim()}" href="${el.getAttribute("href")}" html="${el.outerHTML}"`,
+    );
+  });
 
   injectGalleryStyles();
   injectHosterStyles(
