@@ -93,9 +93,6 @@ async function runQueue(
       const item = items[idx];
       if (!item) continue;
 
-      const filename = item.filename;
-      const filePath = job.subfolder ? `${job.subfolder}/${filename}` : filename;
-
       let imageUrl: string;
       try {
         imageUrl = await resolveItem(item);
@@ -106,6 +103,15 @@ async function runQueue(
         broadcastProgress(job);
         continue;
       }
+
+      // For resolve-viewer items, derive filename from the resolved imageUrl
+      // (viewer URL slug has no extension). For resolved items, item.filename
+      // already has the correct basename.
+      const resolvedFilename =
+        item.kind === "resolve-viewer"
+          ? (new URL(imageUrl).pathname.split("/").at(-1) ?? item.filename)
+          : item.filename;
+      const filePath = job.subfolder ? `${job.subfolder}/${resolvedFilename}` : resolvedFilename;
 
       try {
         await browser.downloads.download({
@@ -146,7 +152,10 @@ export async function startGalleryJob(req: MDGalleryStartRequest): Promise<void>
   };
   await upsertJob(job);
   broadcastProgress(job);
-  void runQueue(job, req.items.slice(), req.maxParallel);
+  // Awaiting runQueue keeps the message handler's Promise pending, which tells
+  // Chrome to keep the SW alive until all downloads are initiated.
+  // (void / fire-and-forget would let Chrome terminate the SW immediately.)
+  await runQueue(job, req.items.slice(), req.maxParallel);
 }
 
 // Called at SW startup to recover any jobs that were interrupted by SW termination.
