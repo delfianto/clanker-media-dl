@@ -5,7 +5,7 @@
 
 import type { GalleryJobItem } from "./messages";
 
-export type HosterId = "imagebam" | "imgbox" | "imgbb" | "bunkr";
+export type HosterId = "imagebam" | "imgbox" | "imgbb" | "bunkr" | "erome";
 
 export type RedirectRule = {
   id: string; // stable slug for user-override keying, e.g. "imagebam-new"

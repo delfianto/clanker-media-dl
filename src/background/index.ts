@@ -6,11 +6,52 @@ import type {
   MDListJobsResponse,
 } from "../types/messages";
 import { crossOriginFetchBlob } from "./fetcher";
-import { startGalleryJob, listJobs, resumeRunningJobs } from "./gallery";
+import { startGalleryJob, listJobs, resumeRunningJobs, attemptDownload } from "./gallery";
 import { sanitizeFilename } from "./sanitize";
 
 // Recover any jobs that were mid-flight when the SW was last terminated.
 void resumeRunningJobs();
+
+// Register header modification rules for Erome downloads (Referer check bypass)
+async function setupDeclarativeRules(): Promise<void> {
+  const RULE_ID = 129258;
+  try {
+    const rules = await browser.declarativeNetRequest.getDynamicRules();
+    const ruleExists = rules.some((r) => r.id === RULE_ID);
+    if (!ruleExists) {
+      const newRule = {
+        id: RULE_ID,
+        priority: 1,
+        action: {
+          type: "modifyHeaders" as const,
+          requestHeaders: [
+            {
+              header: "Referer",
+              operation: "set" as const,
+              value: "https://www.erome.com/",
+            },
+          ],
+        },
+        condition: {
+          urlFilter: "*://*.erome.com/*",
+          resourceTypes: [
+            "media" as const,
+            "xmlhttprequest" as const,
+            "other" as const,
+            "image" as const,
+          ],
+        },
+      };
+      await browser.declarativeNetRequest.updateDynamicRules({
+        removeRuleIds: [RULE_ID],
+        addRules: [newRule],
+      });
+    }
+  } catch (err) {
+    console.error("[md] failed to setup declarative net request rules:", err);
+  }
+}
+void setupDeclarativeRules();
 
 type AnyResponse = MDFetchBlobResponse | MDListJobsResponse | { error?: string } | void;
 
@@ -34,12 +75,7 @@ browser.runtime.onMessage.addListener((msg: unknown): Promise<AnyResponse> | und
     const req = m as { url: string; filename: string; subfolder: string };
     const safeName = sanitizeFilename(req.filename);
     const filePath = req.subfolder ? `${req.subfolder}/${safeName}` : safeName;
-    return browser.downloads
-      .download({
-        url: req.url,
-        filename: filePath,
-        conflictAction: "uniquify",
-      })
+    return attemptDownload(req.url, filePath)
       .then((): void => {})
       .catch((err: unknown) => {
         console.error("[md] single download failed:", err);

@@ -11,6 +11,7 @@ export const DEFAULT_SETTINGS: Settings = {
     imgbox: { enabled: true, redirectRules: null, cssOverrides: "" },
     imgbb: { enabled: true, redirectRules: null, cssOverrides: "" },
     bunkr: { enabled: true, redirectRules: null, cssOverrides: "" },
+    erome: { enabled: true, redirectRules: null, cssOverrides: "" },
   },
   maxParallelImg: 5,
   maxParallelVid: 1,

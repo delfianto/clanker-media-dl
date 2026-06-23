@@ -17,6 +17,10 @@ import {
   activate as activateBunkr,
   activateGallery as activateGalleryBunkr,
 } from "../hosts/bunkr/adapter";
+import {
+  activate as activateErome,
+  activateGallery as activateGalleryErome,
+} from "../hosts/erome/adapter";
 import { runGalleryAdapter, type GalleryAdapterFn } from "./shared/gallery-runner";
 
 const ADAPTERS: Record<HosterId, (model: HosterModel, config: MDConfig) => void> = {
@@ -24,6 +28,7 @@ const ADAPTERS: Record<HosterId, (model: HosterModel, config: MDConfig) => void>
   imgbox: activateImgbox,
   imgbb: activateImgbb,
   bunkr: activateBunkr,
+  erome: activateErome,
 };
 
 const GALLERY_ADAPTERS: Record<HosterId, GalleryAdapterFn> = {
@@ -31,6 +36,7 @@ const GALLERY_ADAPTERS: Record<HosterId, GalleryAdapterFn> = {
   imgbox: activateGalleryImgbox,
   imgbb: activateGalleryImgbb,
   bunkr: activateGalleryBunkr,
+  erome: activateGalleryErome,
 };
 
 // MAIN world, document_idle. Registered synchronously at load — isolated.ts

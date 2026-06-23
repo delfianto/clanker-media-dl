@@ -85,3 +85,16 @@ export type MDListJobsResponse = { jobs: DownloadJob[] };
 
 // SW → options page: a single log entry to append live in the Logs tab.
 export type MDLogMessage = { type: "MD_LOG"; entry: DownloadLog };
+
+// ── Offscreen download messages ──────────────────────────────────────────────
+export type MDOffscreenDownloadRequest = {
+  type: "MD_OFFSCREEN_DOWNLOAD";
+  url: string;
+};
+
+export type MDOffscreenDownloadResponse = { blobUrl: string } | { error: string };
+
+export type MDOffscreenCleanupRequest = {
+  type: "MD_OFFSCREEN_CLEANUP";
+  blobUrl: string;
+};
