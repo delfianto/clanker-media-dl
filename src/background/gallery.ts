@@ -10,6 +10,43 @@ import { appendLog } from "./logger";
 
 const JOBS_KEY = "downloadJobs";
 
+// ── Download completion tracking ─────────────────────────────────────────────
+// browser.downloads.download() resolves on *initiation*, not completion.
+// We track each downloadId and wait for onChanged to confirm the file actually
+// landed on disk — otherwise CDN errors / expired tokens silently drop files
+// while the job counter reports them as "ok".
+//
+// No fixed timeout: a 2 GB video on a slow link can legitimately take many
+// minutes. Chrome's download manager reports interrupted/canceled on its own
+// for network failures, expired tokens, disk-full, etc. — those are the real
+// error signals, not an arbitrary timer.
+
+interface PendingDownload {
+  resolve: () => void;
+  reject: (err: Error) => void;
+}
+
+const pendingDownloads = new Map<number, PendingDownload>();
+
+browser.downloads.onChanged.addListener((delta) => {
+  if (delta.state === undefined) return;
+  const pending = pendingDownloads.get(delta.id);
+  if (!pending) return;
+
+  if (delta.state.current === "complete") {
+    pendingDownloads.delete(delta.id);
+    pending.resolve();
+  } else if (delta.state.current === "interrupted") {
+    pendingDownloads.delete(delta.id);
+    pending.reject(
+      new Error(`download interrupted${delta.error ? `: ${delta.error.current}` : ""}`),
+    );
+  } else if (delta.state.current === "canceled") {
+    pendingDownloads.delete(delta.id);
+    pending.reject(new Error("download canceled"));
+  }
+});
+
 // ── Storage helpers ──────────────────────────────────────────────────────────
 
 async function readJobs(): Promise<DownloadJob[]> {
@@ -112,6 +149,32 @@ async function resolveItem(item: GalleryJobItem, jobId: string): Promise<string>
 
 // ── Concurrency queue ────────────────────────────────────────────────────────
 
+// Chrome download interruptions that are worth retrying — the CDN throttled
+// us, the network blipped, or the SW crashed mid-transfer. These are not
+// permanent file problems; the same URL will likely succeed on retry.
+const RETRYABLE_ERRORS = ["SERVER_FAILED", "NETWORK_FAILED", "CRASH"];
+const MAX_DOWNLOAD_RETRIES = 3;
+
+function isTransientError(err: unknown): boolean {
+  const msg = String(err);
+  return RETRYABLE_ERRORS.some((e) => msg.includes(e));
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+async function attemptDownload(url: string, filePath: string): Promise<void> {
+  const downloadId = await browser.downloads.download({
+    url,
+    filename: filePath,
+    conflictAction: "uniquify",
+  });
+  await new Promise<void>((resolve, reject) => {
+    pendingDownloads.set(downloadId, { resolve, reject });
+  });
+}
+
 async function runQueue(
   job: DownloadJob,
   items: GalleryJobItem[],
@@ -161,28 +224,53 @@ async function runQueue(
       const filePath = job.subfolder ? `${job.subfolder}/${resolvedFilename}` : resolvedFilename;
 
       try {
-        await browser.downloads.download({
-          url: imageUrl,
-          filename: filePath,
-          conflictAction: "uniquify",
-        });
-        job.completedCount++;
-        if (job.items?.[idx]) {
-          job.items[idx].status = "done";
-          job.items[idx].filename = resolvedFilename;
+        let succeeded = false;
+        let lastErr: unknown;
+        for (let attempt = 0; attempt <= MAX_DOWNLOAD_RETRIES; attempt++) {
+          if (attempt > 0) {
+            const backoff = 1000 * 2 ** (attempt - 1); // 1s, 2s, 4s
+            void appendLog(
+              "debug",
+              `Retry ${attempt}/${MAX_DOWNLOAD_RETRIES} for ${resolvedFilename} in ${backoff}ms`,
+              job.jobId,
+            );
+            await sleep(backoff);
+          }
+          try {
+            await attemptDownload(imageUrl, filePath);
+            succeeded = true;
+            break;
+          } catch (dlErr) {
+            lastErr = dlErr;
+            if (attempt < MAX_DOWNLOAD_RETRIES && isTransientError(dlErr)) continue;
+            break;
+          }
         }
-        void appendLog("debug", `Queued download: ${filePath}`, job.jobId);
-      } catch (dlErr) {
-        void appendLog(
-          "error",
-          `browser.downloads.download failed for ${imageUrl}: ${String(dlErr)}`,
-          job.jobId,
-        );
+
+        if (succeeded) {
+          job.completedCount++;
+          if (job.items?.[idx]) {
+            job.items[idx].status = "done";
+            job.items[idx].filename = resolvedFilename;
+          }
+          void appendLog("debug", `Downloaded: ${filePath}`, job.jobId);
+        } else {
+          void appendLog("error", `Download failed for ${imageUrl}: ${String(lastErr)}`, job.jobId);
+          job.failedCount++;
+          job.completedCount++;
+          if (job.items?.[idx]) {
+            job.items[idx].status = "error";
+            job.items[idx].error = String(lastErr);
+          }
+        }
+      } catch (outerErr) {
+        // Safety net — shouldn't reach here, but don't let a bug stall the queue.
+        void appendLog("error", `Unexpected error for ${imageUrl}: ${String(outerErr)}`, job.jobId);
         job.failedCount++;
         job.completedCount++;
         if (job.items?.[idx]) {
           job.items[idx].status = "error";
-          job.items[idx].error = String(dlErr);
+          job.items[idx].error = String(outerErr);
         }
       }
       await upsertJob(job);
