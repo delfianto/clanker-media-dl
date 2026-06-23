@@ -12,7 +12,7 @@
 //     ISOLATED decodes the base64 back into an ArrayBuffer and transfers it
 //     zero-copy (see MDMainResponse + the [buffer] transferable).
 
-import type { DownloadJob } from "./jobs";
+import type { DownloadJob, DownloadLog } from "./jobs";
 import type { HosterId } from "./hoster";
 
 // ── Single-image download (existing) ────────────────────────────────────────
@@ -81,3 +81,6 @@ export type MDJobProgressMessage = {
 // Options page → SW: request the current job list for the Downloads tab.
 export type MDListJobsRequest = { type: "MD_LIST_JOBS" };
 export type MDListJobsResponse = { jobs: DownloadJob[] };
+
+// SW → options page: a single log entry to append live in the Logs tab.
+export type MDLogMessage = { type: "MD_LOG"; entry: DownloadLog };

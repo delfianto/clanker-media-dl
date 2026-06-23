@@ -15,4 +15,5 @@ export const DEFAULT_SETTINGS: Settings = {
   maxParallel: 3,
   subfolderPrefix: "",
   autoFolderPerAlbum: true,
+  verboseLogging: false,
 };

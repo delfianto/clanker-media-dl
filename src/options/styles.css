@@ -576,6 +576,124 @@ progress::-moz-progress-bar {
   color: var(--text-dim);
 }
 
+/* ── Sub-tab bar (inside Downloads view) ───────────── */
+.sub-tab-bar {
+  display: flex;
+  gap: 2px;
+  padding: 8px 24px 0;
+  background: var(--surface2);
+  border-bottom: 1px solid var(--border);
+}
+
+.sub-tab-btn {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 6px 12px 7px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  cursor: pointer;
+  border-radius: 5px 5px 0 0;
+  transition:
+    color 0.12s,
+    border-color 0.12s;
+  font-family: inherit;
+  margin-bottom: -1px;
+}
+
+.sub-tab-btn:hover {
+  color: var(--text);
+}
+
+.sub-tab-btn.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  background: var(--surface);
+}
+
+/* ── Logs tab ────────────────────────────────────────── */
+.logs-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 0 8px;
+}
+
+.log-count {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.log-list {
+  font-family: var(--mono);
+  font-size: 12px;
+  max-height: 62vh;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.log-entry {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--border);
+  line-height: 1.5;
+}
+
+.log-entry:last-child {
+  border-bottom: none;
+}
+
+.log-ts {
+  color: var(--text-dim);
+  flex-shrink: 0;
+  font-size: 11px;
+  padding-top: 2px;
+  letter-spacing: 0.2px;
+}
+
+.log-level {
+  flex-shrink: 0;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+
+.log-info {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+.log-warn {
+  background: #fef3c7;
+  color: var(--warn);
+}
+
+.log-error {
+  background: #fee2e2;
+  color: var(--danger);
+}
+
+.log-debug {
+  background: var(--surface2);
+  color: var(--text-dim);
+}
+
+.log-msg {
+  flex: 1;
+  color: var(--text);
+  word-break: break-all;
+  white-space: pre-wrap;
+}
+
 /* ── Responsive ─────────────────────────────────────── */
 @media (max-width: 640px) {
   .layout {
