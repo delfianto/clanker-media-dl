@@ -237,7 +237,8 @@ export function runGalleryAdapter(model: HosterModel, config: MDConfig): void {
       hosterId: model.id,
       subfolder,
       items: jobItems,
-      maxParallel: config.maxParallel,
+      maxParallelImg: config.maxParallelImg,
+      maxParallelVid: config.maxParallelVid,
     };
     window.postMessage(req, "*");
     return jobId;
@@ -391,7 +392,8 @@ export function runGalleryAdapter(model: HosterModel, config: MDConfig): void {
         hosterId: model.id,
         subfolder,
         items: jobItems,
-        maxParallel: config.maxParallel,
+        maxParallelImg: config.maxParallelImg,
+        maxParallelVid: config.maxParallelVid,
       };
       window.postMessage(req, "*");
     }

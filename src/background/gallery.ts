@@ -97,17 +97,47 @@ async function signBunkrUrl(jsCDN: string, jobId: string): Promise<string> {
   const parsed = new URL(jsCDN);
   const signUrl = `https://glb-apisign.cdn.cr/sign?path=${encodeURIComponent(parsed.pathname)}`;
   void appendLog("debug", `Signing bunkr URL: ${jsCDN}`, jobId);
-  const { text } = await crossOriginFetchText(signUrl);
+  const { text } = await fetchWithRetry(signUrl, jobId, "sign API");
   const json = JSON.parse(text) as { token?: string; ex?: string };
   if (!json.token || !json.ex) throw new Error("bunkr sign API returned unexpected shape");
   return `${jsCDN}?token=${json.token}&ex=${json.ex}`;
+}
+
+// Retry transient HTTP failures (502, 503, 504, network errors) with backoff.
+// Both the viewer page fetch and the sign API can hit these under load —
+// bunkr's infrastructure throttles aggressively.
+async function fetchWithRetry(
+  url: string,
+  jobId: string,
+  label: string,
+  maxRetries = 3,
+): Promise<{ text: string }> {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    if (attempt > 0) {
+      const backoff = 1000 * 2 ** (attempt - 1);
+      void appendLog("debug", `Retry ${attempt}/${maxRetries} for ${label} in ${backoff}ms`, jobId);
+      await sleep(backoff);
+    }
+    try {
+      return await crossOriginFetchText(url);
+    } catch (err) {
+      lastErr = err;
+      const msg = String(err);
+      // Retry on HTTP 5xx and network errors; bail on 4xx (permanent).
+      const transient = /HTTP\s+5\d\d/.test(msg) || /Failed to fetch|NetworkError|abort/i.test(msg);
+      if (attempt < maxRetries && transient) continue;
+      break;
+    }
+  }
+  throw lastErr;
 }
 
 async function resolveItem(item: GalleryJobItem, jobId: string): Promise<string> {
   if (item.kind === "resolved") return item.imageUrl;
 
   void appendLog("debug", `Fetching viewer: ${item.viewerUrl}`, jobId);
-  const { text } = await crossOriginFetchText(item.viewerUrl);
+  const { text } = await fetchWithRetry(item.viewerUrl, jobId, "viewer page");
   const match = new RegExp(item.extractor).exec(text);
   let rawUrl = match?.[1];
   if (rawUrl) {
@@ -128,6 +158,16 @@ async function resolveItem(item: GalleryJobItem, jobId: string): Promise<string>
   }
 
   if (!rawUrl) {
+    // Check for bunkr's maintenance page — the CDN URL is intentionally
+    // absent when the hosting server is down for maintenance.
+    if (/Server under maintenance/i.test(text)) {
+      void appendLog(
+        "error",
+        `Bunkr server under maintenance for ${item.viewerUrl} — try again later`,
+        jobId,
+      );
+      throw new Error("bunkr server under maintenance");
+    }
     // Log a snippet of the fetched HTML to help debug extractor mismatches.
     void appendLog(
       "error",
@@ -150,9 +190,16 @@ async function resolveItem(item: GalleryJobItem, jobId: string): Promise<string>
 // ── Concurrency queue ────────────────────────────────────────────────────────
 
 // Chrome download interruptions that are worth retrying — the CDN throttled
-// us, the network blipped, or the SW crashed mid-transfer. These are not
-// permanent file problems; the same URL will likely succeed on retry.
-const RETRYABLE_ERRORS = ["SERVER_FAILED", "NETWORK_FAILED", "CRASH"];
+// us, the network blipped, the connection dropped mid-transfer, or the SW
+// crashed. These are not permanent file problems; the same URL will likely
+// succeed on retry. SERVER_CONTENT_LENGTH_MISMATCH is common on large video
+// files when the CDN connection drops before all bytes arrive.
+const RETRYABLE_ERRORS = [
+  "SERVER_FAILED",
+  "SERVER_CONTENT_LENGTH_MISMATCH",
+  "NETWORK_FAILED",
+  "CRASH",
+];
 const MAX_DOWNLOAD_RETRIES = 3;
 
 function isTransientError(err: unknown): boolean {
@@ -175,17 +222,22 @@ async function attemptDownload(url: string, filePath: string): Promise<void> {
   });
 }
 
+// Pair each item with its original index into job.items so we can partition
+// items by media type without losing track of which progress slot they own.
+type QueueEntry = { item: GalleryJobItem; origIdx: number };
+
 async function runQueue(
   job: DownloadJob,
-  items: GalleryJobItem[],
+  entries: QueueEntry[],
   maxParallel: number,
 ): Promise<void> {
   let cursor = 0;
 
   async function runOne(): Promise<void> {
-    while (cursor < items.length) {
-      const idx = cursor++;
-      const item = items[idx];
+    while (cursor < entries.length) {
+      const entry = entries[cursor++];
+      const item = entry.item;
+      const idx = entry.origIdx;
       if (!item) continue;
 
       if (job.items?.[idx]) {
@@ -214,9 +266,6 @@ async function runQueue(
         continue;
       }
 
-      // For resolve-viewer items, derive filename from the resolved imageUrl
-      // if the item's filename does not contain a file extension. For resolved items,
-      // or if item.filename already has the correct basename, keep it.
       const resolvedFilename =
         item.kind === "resolve-viewer" && !item.filename.includes(".")
           ? (new URL(imageUrl).pathname.split("/").at(-1) ?? item.filename)
@@ -228,7 +277,7 @@ async function runQueue(
         let lastErr: unknown;
         for (let attempt = 0; attempt <= MAX_DOWNLOAD_RETRIES; attempt++) {
           if (attempt > 0) {
-            const backoff = 1000 * 2 ** (attempt - 1); // 1s, 2s, 4s
+            const backoff = 1000 * 2 ** (attempt - 1);
             void appendLog(
               "debug",
               `Retry ${attempt}/${MAX_DOWNLOAD_RETRIES} for ${resolvedFilename} in ${backoff}ms`,
@@ -264,7 +313,6 @@ async function runQueue(
           }
         }
       } catch (outerErr) {
-        // Safety net — shouldn't reach here, but don't let a bug stall the queue.
         void appendLog("error", `Unexpected error for ${imageUrl}: ${String(outerErr)}`, job.jobId);
         job.failedCount++;
         job.completedCount++;
@@ -278,20 +326,41 @@ async function runQueue(
     }
   }
 
-  const slots = Math.min(job.totalCount, maxParallel);
-  await Promise.all(Array.from({ length: slots }, runOne));
-
-  job.status = job.failedCount > 0 ? "error" : "done";
-  await upsertJob(job);
-  broadcastProgress(job);
-  void appendLog(
-    "info",
-    `Job complete: ${job.completedCount - job.failedCount} ok, ${job.failedCount} failed`,
-    job.jobId,
-  );
+  const slots = Math.min(entries.length, maxParallel);
+  if (slots > 0) await Promise.all(Array.from({ length: slots }, runOne));
 }
 
 // ── Public API ───────────────────────────────────────────────────────────────
+
+// Video/audio extensions — these files are large and CDNs throttle parallel
+// downloads, so they get a separate (lower) parallelism setting.
+const MEDIA_EXTS = new Set([
+  "mp4",
+  "mov",
+  "mkv",
+  "webm",
+  "avi",
+  "m4v",
+  "wmv",
+  "flv",
+  "mpg",
+  "mpeg",
+  "ts",
+  "3gp",
+  "mp3",
+  "wav",
+  "flac",
+  "aac",
+  "ogg",
+  "m4a",
+  "opus",
+  "wma",
+]);
+
+function isMediaFile(filename: string): boolean {
+  const ext = filename.split(".").pop()?.toLowerCase();
+  return ext ? MEDIA_EXTS.has(ext) : false;
+}
 
 export async function startGalleryJob(req: MDGalleryStartRequest): Promise<void> {
   const job: DownloadJob = {
@@ -311,14 +380,34 @@ export async function startGalleryJob(req: MDGalleryStartRequest): Promise<void>
   };
   await upsertJob(job);
   broadcastProgress(job);
+
+  // Partition items by media type so videos (large, CDN-throttled) get their
+  // own lower-parallelism queue while images stay aggressive.
+  const entries = req.items.map((item, i) => ({ item, origIdx: i }));
+  const mediaEntries = entries.filter((e) => isMediaFile(e.item.filename));
+  const imageEntries = entries.filter((e) => !isMediaFile(e.item.filename));
+
   void appendLog(
     "info",
-    `Gallery job started [${req.hosterId}]: ${req.items.length} items → "${req.subfolder || "(no folder)"}", parallel=${req.maxParallel}`,
+    `Gallery job started [${req.hosterId}]: ${req.items.length} items (${imageEntries.length} img, ${mediaEntries.length} media) → "${req.subfolder || "(no folder)"}", parallel=${req.maxParallelImg}/${req.maxParallelVid}`,
     job.jobId,
   );
-  // Awaiting runQueue keeps the message handler's Promise pending, which tells
-  // Chrome to keep the SW alive until all downloads are initiated.
-  await runQueue(job, req.items.slice(), req.maxParallel);
+
+  // Run both queues concurrently — images at maxParallelImg, media at maxParallelVid.
+  // Both share the same job counters; job completes when both queues drain.
+  await Promise.all([
+    runQueue(job, imageEntries, req.maxParallelImg),
+    runQueue(job, mediaEntries, req.maxParallelVid),
+  ]);
+
+  job.status = job.failedCount > 0 ? "error" : "done";
+  await upsertJob(job);
+  broadcastProgress(job);
+  void appendLog(
+    "info",
+    `Job complete: ${job.completedCount - job.failedCount} ok, ${job.failedCount} failed`,
+    job.jobId,
+  );
 }
 
 // Called at SW startup to recover any jobs that were interrupted by SW termination.

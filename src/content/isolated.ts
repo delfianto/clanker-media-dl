@@ -187,7 +187,8 @@ async function init(): Promise<void> {
   const config: MDConfig = {
     hosterId: model.id,
     pageType,
-    maxParallel: settings.maxParallel,
+    maxParallelImg: settings.maxParallelImg,
+    maxParallelVid: settings.maxParallelVid,
     downloadDirectory: settings.downloadDirectory,
     autoFolderPerAlbum: settings.autoFolderPerAlbum,
   };
