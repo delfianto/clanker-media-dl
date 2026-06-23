@@ -5,7 +5,14 @@
 
 import type { GalleryJobItem } from "./messages";
 
-export type HosterId = "imagebam" | "imgbox" | "imgbb" | "bunkr" | "erome" | "jpg6";
+export type HosterId =
+  | "imagebam"
+  | "imgbox"
+  | "imgbb"
+  | "bunkr"
+  | "erome"
+  | "jpg6"
+  | "girlsreleased";
 
 export type RedirectRule = {
   id: string; // stable slug for user-override keying, e.g. "imagebam-new"
@@ -60,7 +67,7 @@ export type ExtractFromViewer = (html: string) => { url: string; filename?: stri
 
 // Transform a raw CDN URL into a downloadable URL (e.g. call a sign API).
 // If absent, the raw URL is used directly.
-export type ResolveUrl = (rawUrl: string) => Promise<string>;
+export type ResolveUrl = (rawUrl: string, viewerUrl?: string) => Promise<string>;
 
 export type GalleryConfig = {
   galleryMatches: string[]; // manifest content_scripts matches for gallery pages

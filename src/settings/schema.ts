@@ -13,6 +13,7 @@ export const DEFAULT_SETTINGS: Settings = {
     bunkr: { enabled: true, redirectRules: null, cssOverrides: "" },
     erome: { enabled: true, redirectRules: null, cssOverrides: "" },
     jpg6: { enabled: true, redirectRules: null, cssOverrides: "" },
+    girlsreleased: { enabled: true, redirectRules: null, cssOverrides: "" },
   },
   maxParallelImg: 5,
   maxParallelVid: 1,
