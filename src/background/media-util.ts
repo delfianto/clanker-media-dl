@@ -30,12 +30,14 @@ export function isMediaFile(filename: string): boolean {
   return ext ? MEDIA_EXTS.has(ext) : false;
 }
 
-// Chrome download interruptions worth retrying — the CDN throttled us,
-// the network blipped, the connection dropped mid-transfer, or the SW crashed.
 const RETRYABLE_ERRORS = [
   "SERVER_FAILED",
   "SERVER_CONTENT_LENGTH_MISMATCH",
   "NETWORK_FAILED",
+  "NETWORK_TIMEOUT",
+  "NETWORK_DISCONNECTED",
+  "NETWORK_SERVER_DOWN",
+  "FILE_TRANSIENT_ERROR",
   "CRASH",
 ];
 
