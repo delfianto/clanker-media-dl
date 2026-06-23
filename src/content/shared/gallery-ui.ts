@@ -1,5 +1,11 @@
+import type { GalleryJobItem } from "../../types/messages";
+
 const STYLE_ID = "md-gallery-styles";
 
+// Shared gallery styles only — the generic fallback button + the spin keyframe
+// used by all hosters' loading icons. Hoster-specific CSS lives in each
+// adapter's activateGallery function so it's only injected on the site that
+// needs it.
 export function injectGalleryStyles(): void {
   if (document.getElementById(STYLE_ID)) return;
   const style = document.createElement("style");
@@ -19,42 +25,6 @@ export function injectGalleryStyles(): void {
       margin: 8px 0 12px;
     }
     .md-gallery-note { font-size: 11px; color: #71717a; }
-    .main-content .view-switches a.md-ib-gallery-btn {
-      position: relative;
-      top: -0.05em;
-      cursor: pointer;
-      margin-right: 12px;
-      opacity: 0.6;
-      font-size: 0.9em;
-      transition: opacity 0.15s;
-    }
-    .main-content .view-switches a.md-ib-gallery-btn:hover {
-      opacity: 1;
-    }
-    .main-content .view-switches a.md-ib-gallery-btn.loading {
-      pointer-events: none;
-      opacity: 1;
-    }
-    .md-imgbox-gallery-btn {
-      cursor: pointer;
-    }
-    .md-imgbox-gallery-btn.loading {
-      pointer-events: none;
-    }
-    .md-bunkr-gallery-btn {
-      height: 2.25rem;
-      display: inline-flex; align-items: center; gap: 0.5rem;
-      padding: 0 0.9rem; font-size: 0.9rem; font-weight: 600;
-      border: 1px solid rgba(167, 139, 250, 0.35); border-radius: 9999px;
-      color: #c9b8ff !important; background: transparent; cursor: pointer;
-      text-decoration: none !important; transition: background 0.15s, border-color 0.15s, color 0.15s;
-    }
-    .md-bunkr-gallery-btn:hover {
-      background: rgba(167, 139, 250, 0.1); border-color: #a78bfa; color: #fff !important;
-    }
-    .md-bunkr-gallery-btn.loading {
-      pointer-events: none; opacity: 0.7;
-    }
     @keyframes md-spin {
       0% { transform: rotate(0deg); }
       100% { transform: rotate(360deg); }
@@ -62,6 +32,57 @@ export function injectGalleryStyles(): void {
   `;
   (document.head ?? document.documentElement).appendChild(style);
 }
+
+// Inject hoster-specific CSS with a unique ID so it's only added once per page.
+// Called by each adapter's activateGallery — keeps hoster styles scoped to the
+// site that needs them instead of polluting every gallery page.
+export function injectHosterStyles(id: string, css: string): void {
+  const styleId = `md-${id}-styles`;
+  if (document.getElementById(styleId)) return;
+  const style = document.createElement("style");
+  style.id = styleId;
+  style.textContent = css;
+  (document.head ?? document.documentElement).appendChild(style);
+}
+
+// Shared button-wiring helper. Each hoster's gallery adapter creates its own
+// button element with hoster-specific HTML/placement, then calls this to wire
+// up the click → triggerDownload + progress → reset pattern. Eliminates the
+// copy-pasted progress listener that was in gallery-runner for each hoster.
+export function wireGalleryButton(
+  btn: HTMLElement,
+  loadingIcon: string,
+  doneIcon: string,
+  triggerDownload: (btn: HTMLElement, loadingIcon: string, doneIcon: string) => Promise<string>,
+): void {
+  let activeJobId = "";
+  btn.addEventListener("click", async () => {
+    if (activeJobId) return;
+    activeJobId = "loading";
+    activeJobId = await triggerDownload(btn, loadingIcon, doneIcon);
+  });
+
+  window.addEventListener("message", (event) => {
+    if (event.source !== window) return;
+    const data = event.data as Record<string, unknown>;
+    if (data["type"] === "MD_JOB_PROGRESS" && data["jobId"] === activeJobId) {
+      const status = data["status"];
+      if (status === "done" || status === "error") {
+        btn.innerHTML = doneIcon;
+        btn.classList.remove("loading");
+        activeJobId = "";
+      }
+    }
+  });
+}
+
+// Context passed to each hoster's activateGallery function.
+export type GalleryCtx = {
+  items: GalleryJobItem[];
+  subfolder: string;
+  albumName: string;
+  triggerDownload: (btn: HTMLElement, loadingIcon: string, doneIcon: string) => Promise<string>;
+};
 
 export function createDownloadAllButton(
   totalCount: number,

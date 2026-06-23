@@ -1,5 +1,6 @@
 import type { GalleryJobItem } from "../../types/messages";
 import type { HosterModel } from "../../types/hoster";
+import { crossOriginFetchText } from "../../background/fetcher";
 
 // Bunkr embeds the complete file list as a JS variable (window.albumFiles) in
 // every album page. The DOM only renders a subset at any time (pagination /
@@ -55,7 +56,6 @@ function collectBunkrItems(): GalleryJobItem[] {
         viewerUrl: `${origin}/f/${f.slug}`,
         extractor,
         filename: f.name || f.slug,
-        needsSign: true as const,
       }));
   }
 
@@ -80,7 +80,6 @@ function collectBunkrItems(): GalleryJobItem[] {
           viewerUrl: `${origin}/f/${f.slug}`,
           extractor,
           filename: f.name || f.slug,
-          needsSign: true as const,
         }));
       }
     } catch {
@@ -103,9 +102,57 @@ function collectBunkrItems(): GalleryJobItem[] {
         viewerUrl,
         extractor,
         filename,
-        needsSign: true as const,
       };
     });
+}
+
+// ── SW-side hooks ────────────────────────────────────────────────────────────
+
+// Extract the media URL from a bunkr viewer page's HTML. Tries the jsCDN
+// variable first, then falls back to <source>/<video>/<audio> tags for video
+// pages. Also detects the "Server under maintenance" page and parses the
+// filename from the page's <span class="name text-ellipsis">.
+function extractFromBunkrViewer(html: string): { url: string; filename?: string } | null {
+  // Maintenance check — the CDN URL is intentionally absent when the server is down.
+  if (/Server under maintenance/i.test(html)) {
+    throw new Error("bunkr server under maintenance");
+  }
+
+  // Primary: var jsCDN = "..."
+  let rawUrl = /var jsCDN\s*=\s*"([^"]+)"/.exec(html)?.[1];
+  if (rawUrl) {
+    rawUrl = rawUrl.replace(/\\/g, "");
+  }
+
+  // Fallback: video/audio pages don't use var jsCDN
+  if (!rawUrl) {
+    const sourceMatch =
+      /<source\s+[^>]*src=["']([^"']+)["']/i.exec(html) ??
+      /<video\s+[^>]*src=["']([^"']+)["']/i.exec(html) ??
+      /<audio\s+[^>]*src=["']([^"']+)["']/i.exec(html);
+    if (sourceMatch?.[1]) {
+      rawUrl = sourceMatch[1].replace(/\\/g, "");
+    }
+  }
+
+  if (!rawUrl) return null;
+
+  // Parse filename from viewer page
+  const nameMatch = /<span[^>]+class="name text-ellipsis"[^>]*>([^<]+)<\/span>/i.exec(html);
+  const filename = nameMatch?.[1]?.trim();
+
+  return filename ? { url: rawUrl, filename } : { url: rawUrl };
+}
+
+// Sign a bunkr CDN URL via the glb-apisign.cdn.cr API. Returns the URL with
+// token + expiry query params appended.
+async function signBunkrUrl(rawUrl: string): Promise<string> {
+  const parsed = new URL(rawUrl);
+  const signUrl = `https://glb-apisign.cdn.cr/sign?path=${encodeURIComponent(parsed.pathname)}`;
+  const { text } = await crossOriginFetchText(signUrl);
+  const json = JSON.parse(text) as { token?: string; ex?: string };
+  if (!json.token || !json.ex) throw new Error("bunkr sign API returned unexpected shape");
+  return `${rawUrl}?token=${json.token}&ex=${json.ex}`;
 }
 
 export const bunkrModel: HosterModel = {
@@ -133,10 +180,12 @@ export const bunkrModel: HosterModel = {
       // SW fetches each viewer HTML; group 1 = jsCDN (unsigned CDN URL).
       anchorSelector: "a[href*='/f/']",
       extractor: 'var jsCDN\\s*=\\s*"([^"]+)"',
-      needsSign: true,
     },
     // Reads window.albumFiles (complete file list) instead of DOM-scraping,
     // which only returns a subset due to Bunkr's JS-driven pagination.
     collectAllItems: collectBunkrItems,
+    // SW-side hooks: bunkr owns its viewer-page parsing + URL signing
+    extractFromViewer: extractFromBunkrViewer,
+    resolveUrl: signBunkrUrl,
   },
 };

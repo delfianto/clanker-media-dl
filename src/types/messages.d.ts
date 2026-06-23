@@ -55,7 +55,6 @@ export type GalleryJobItem =
       viewerUrl: string;
       extractor: string;
       filename: string;
-      needsSign?: true;
     };
 
 // MAIN → ISOLATED → SW: kick off a gallery download job.

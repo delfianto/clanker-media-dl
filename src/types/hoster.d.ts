@@ -47,9 +47,20 @@ export type GalleryImageSource =
       strategy: "resolve-viewer";
       anchorSelector: string; // CSS selector for <a> links to viewer pages
       extractor: string; // regex string sent to SW: group 1 = raw CDN URL in viewer HTML
-      needsSign?: true; // bunkr only: SW must call sign API after extraction
       filenameSelector?: string; // CSS selector (relative to the anchor) to locate the filename text
     };
+
+// Optional hooks the SW calls during viewer-page resolution. These let each
+// hoster own its peculiarities (bunkr signing, video <source> fallback, etc.)
+// without the SW knowing hoster-specific details.
+
+// Parse the raw media URL from viewer page HTML. Overrides the regex extractor.
+// Can also return a filename override. Return null to fall back to the regex.
+export type ExtractFromViewer = (html: string) => { url: string; filename?: string } | null;
+
+// Transform a raw CDN URL into a downloadable URL (e.g. call a sign API).
+// If absent, the raw URL is used directly.
+export type ResolveUrl = (rawUrl: string) => Promise<string>;
 
 export type GalleryConfig = {
   galleryMatches: string[]; // manifest content_scripts matches for gallery pages
@@ -65,6 +76,9 @@ export type GalleryConfig = {
   // DOM-scraping strategies and returns the complete item list directly.
   // Runs in MAIN world so it has full access to page JS globals.
   collectAllItems?: () => GalleryJobItem[];
+  // Optional SW-side hooks (see type docs above).
+  extractFromViewer?: ExtractFromViewer;
+  resolveUrl?: ResolveUrl;
 };
 
 export type HosterModel = {
