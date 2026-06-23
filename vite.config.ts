@@ -20,6 +20,7 @@ const CONTENT_MATCHES = [
   "https://imgbox.com/g/*",
   "https://ibb.co/album/*",
   ...BUNKR_DOMAINS.map((d) => `https://${d}/a/*`),
+  "https://*.erome.com/a/*",
 ] as const;
 
 // CDN domains — where the redirector intercepts raw image URLs at document_start.
@@ -34,7 +35,7 @@ function makeManifest(target: Browser): Record<string, unknown> {
     description:
       "One-click image downloads from image hosting sites. Clean, private, no external server.",
     icons: { "48": "icons/icon-48.png", "96": "icons/icon-96.png" },
-    permissions: ["storage", "downloads"],
+    permissions: ["storage", "downloads", "declarativeNetRequest", "offscreen"],
     host_permissions: [
       "https://*.imagebam.com/*",
       "https://imgbox.com/*",
@@ -45,6 +46,7 @@ function makeManifest(target: Browser): Record<string, unknown> {
       "https://*.cdn.cr/*",
       // bunkr — needed for SW to fetch album/viewer pages for gallery resolution
       ...BUNKR_DOMAINS.map((d) => `https://${d}/*`),
+      "https://*.erome.com/*",
     ],
     background: { service_worker: "src/background/index.ts", type: "module" },
     action: {
@@ -121,6 +123,7 @@ export default defineConfig({
     webExtension({
       browser,
       manifest: () => makeManifest(browser),
+      additionalInputs: ["src/offscreen/index.html"],
     }),
   ],
 });

@@ -191,7 +191,88 @@ function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-async function attemptDownload(url: string, filePath: string): Promise<void> {
+let creatingOffscreen: Promise<void> | null = null;
+
+async function ensureOffscreenDocument(): Promise<void> {
+  if (await hasOffscreenDocument()) return;
+
+  if (creatingOffscreen) {
+    await creatingOffscreen;
+    return;
+  }
+
+  creatingOffscreen = (browser as any).offscreen.createDocument({
+    url: "src/offscreen/index.html",
+    reasons: ["BLOBS"],
+    justification: "Fetch and download Erome media to bypass Referer check",
+  });
+
+  try {
+    await creatingOffscreen;
+  } finally {
+    creatingOffscreen = null;
+  }
+}
+
+async function hasOffscreenDocument(): Promise<boolean> {
+  if ("getContexts" in browser.runtime) {
+    const contexts = await (browser.runtime as any).getContexts({
+      contextTypes: ["OFFSCREEN_DOCUMENT"],
+    });
+    return contexts.length > 0;
+  }
+
+  const clients = await (self as any).clients.matchAll();
+  return clients.some((c: any) => c.url.includes("offscreen/index.html"));
+}
+
+async function downloadViaOffscreen(url: string, filePath: string): Promise<void> {
+  await ensureOffscreenDocument();
+
+  const response = (await browser.runtime.sendMessage({
+    type: "MD_OFFSCREEN_DOWNLOAD",
+    url,
+  })) as { blobUrl?: string; error?: string };
+
+  if (response && "error" in response && response.error) {
+    throw new Error(response.error);
+  }
+
+  const blobUrl = response?.blobUrl;
+  if (!blobUrl) {
+    throw new Error("No blob URL returned from offscreen document");
+  }
+
+  try {
+    const downloadId = await browser.downloads.download({
+      url: blobUrl,
+      filename: filePath,
+      conflictAction: "uniquify",
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      pendingDownloads.set(downloadId, {
+        resolve: () => {
+          browser.runtime.sendMessage({ type: "MD_OFFSCREEN_CLEANUP", blobUrl }).catch(() => {});
+          resolve();
+        },
+        reject: (err) => {
+          browser.runtime.sendMessage({ type: "MD_OFFSCREEN_CLEANUP", blobUrl }).catch(() => {});
+          reject(err);
+        },
+      });
+    });
+  } catch (err) {
+    browser.runtime.sendMessage({ type: "MD_OFFSCREEN_CLEANUP", blobUrl }).catch(() => {});
+    throw err;
+  }
+}
+
+export async function attemptDownload(url: string, filePath: string): Promise<void> {
+  if (url.includes("erome.com") && isMediaFile(filePath)) {
+    return downloadViaOffscreen(url, filePath);
+  }
+
   const downloadId = await browser.downloads.download({
     url,
     filename: filePath,
