@@ -11,6 +11,7 @@ const CONTENT_MATCHES = [
   // Viewer pages
   "https://www.imagebam.com/image/*",
   "https://www.imagebam.com/view/*", // also covers gallery pages (distinguished by DOM)
+  "https://www.imagebam.com/gallery/*", // legacy gallery pages
   "https://imgbox.com/*",
   "https://ibb.co/*",
   "https://bunkr.site/f/*",
