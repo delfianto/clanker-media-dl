@@ -553,6 +553,14 @@ function renderLogEntry(entry: DownloadLog): HTMLElement {
   ]);
 }
 
+// One log record per line: "<ISO timestamp> <level> <msg>". Embedded newlines
+// in msg are collapsed so each record stays on a single line for easy sharing.
+function formatLogLine(entry: DownloadLog): string {
+  const ts = new Date(entry.ts).toISOString();
+  const msg = entry.msg.replace(/[\r\n]+/g, " ");
+  return `${ts} ${entry.level} ${msg}`;
+}
+
 async function loadLogsTab(): Promise<void> {
   const container = $("dl-logs");
   container.replaceChildren(el("p", { className: "default-note", textContent: "Loading…" }));
@@ -671,6 +679,24 @@ async function init(): Promise<void> {
   $("stab-settings").addEventListener("click", () => switchDlSubTab("settings"));
   $("stab-history").addEventListener("click", () => switchDlSubTab("history"));
   $("stab-logs").addEventListener("click", () => switchDlSubTab("logs"));
+
+  $("btn-copy-logs").addEventListener("click", () => {
+    void (async () => {
+      try {
+        const raw = await browser.storage.local.get({ downloadLogs: [] });
+        const logs = (raw["downloadLogs"] as DownloadLog[] | undefined) ?? [];
+        if (logs.length === 0) {
+          toast("No logs to copy", true);
+          return;
+        }
+        const text = logs.map(formatLogLine).join("\n");
+        await navigator.clipboard.writeText(text);
+        toast(`Copied ${logs.length} entries`);
+      } catch {
+        toast("Copy failed", true);
+      }
+    })();
+  });
 
   $("btn-clear-logs").addEventListener("click", () => {
     void browser.storage.local.set({ downloadLogs: [] }).then(() => {

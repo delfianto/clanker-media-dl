@@ -822,6 +822,11 @@ progress::-moz-progress-bar {
   font-weight: 600;
 }
 
+.logs-actions {
+  display: flex;
+  gap: 8px;
+}
+
 .log-list {
   font-family: var(--mono);
   font-size: 12px;
