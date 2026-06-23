@@ -160,6 +160,55 @@ export function runGalleryAdapter(model: HosterModel, config: MDConfig): void {
     return;
   }
 
+  const albumHeader = document.querySelector("h1");
+  if (model.id === "imgbox" && albumHeader) {
+    injectGalleryStyles();
+    const dlBtn = document.createElement("a");
+    dlBtn.href = "javascript:void(0);";
+    dlBtn.className = "md-imgbox-gallery-btn";
+    dlBtn.title = "Download Gallery";
+    dlBtn.innerHTML = '<i class="fa fa-download"></i>';
+
+    let activeJobId = "";
+    dlBtn.addEventListener("click", () => {
+      if (activeJobId) return;
+      activeJobId = crypto.randomUUID();
+      dlBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i>';
+      dlBtn.classList.add("loading");
+
+      const req: MDGalleryStartRequest = {
+        type: "MD_GALLERY_START",
+        jobId: activeJobId,
+        hosterId: model.id,
+        subfolder,
+        items,
+        maxParallel: config.maxParallel,
+      };
+      window.postMessage(req, "*");
+    });
+
+    window.addEventListener("message", (event) => {
+      if (event.source !== window) return;
+      const data = event.data as Record<string, unknown>;
+      if (data["type"] === "MD_JOB_PROGRESS" && data["jobId"] === activeJobId) {
+        const status = data["status"];
+        if (status === "done" || status === "error") {
+          dlBtn.innerHTML = '<i class="fa fa-download"></i>';
+          dlBtn.classList.remove("loading");
+          activeJobId = "";
+        }
+      }
+    });
+
+    albumHeader.appendChild(dlBtn);
+    if (albumHeader instanceof HTMLElement) {
+      albumHeader.style.display = "flex";
+      albumHeader.style.justifyContent = "space-between";
+      albumHeader.style.alignItems = "center";
+    }
+    return;
+  }
+
   const wrap = createDownloadAllButton(items.length, note, () => {
     const req: MDGalleryStartRequest = {
       type: "MD_GALLERY_START",
