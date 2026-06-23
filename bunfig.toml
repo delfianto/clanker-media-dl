@@ -1,0 +1,3 @@
+# Bun configuration.
+# Reserved for future `bun test` setup (e.g. preload = ["./test/setup.ts"]).
+# Build/lint/format/typecheck all go through the `vp` CLI — see package.json scripts.

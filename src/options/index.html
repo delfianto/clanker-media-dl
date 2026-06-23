@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Clanker Media Downloader — Settings</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header>
+      <img src="/icons/icon-48.png" alt="" class="logo" />
+      <div class="title-block">
+        <h1>Clanker Media Downloader</h1>
+        <span class="version" id="version"></span>
+      </div>
+      <label class="master-toggle" title="Enable / disable the whole extension">
+        <span>Extension Enabled</span>
+        <span class="switch">
+          <input type="checkbox" id="master-enabled" />
+          <span class="slider"></span>
+        </span>
+      </label>
+    </header>
+
+    <div class="layout">
+      <nav class="sidebar">
+        <h2>Hosters</h2>
+        <ul id="hoster-list"></ul>
+      </nav>
+
+      <main class="panel" id="panel"></main>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <script type="module" src="./index.ts"></script>
+  </body>
+</html>
