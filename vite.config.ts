@@ -21,6 +21,8 @@ const CONTENT_MATCHES = [
   "https://ibb.co/album/*",
   ...BUNKR_DOMAINS.map((d) => `https://${d}/a/*`),
   "https://*.erome.com/a/*",
+  "https://jpg6.su/album/*",
+  "https://jpg6.su/*",
 ] as const;
 
 // CDN domains — where the redirector intercepts raw image URLs at document_start.
@@ -47,6 +49,8 @@ function makeManifest(target: Browser): Record<string, unknown> {
       // bunkr — needed for SW to fetch album/viewer pages for gallery resolution
       ...BUNKR_DOMAINS.map((d) => `https://${d}/*`),
       "https://*.erome.com/*",
+      "https://jpg6.su/*",
+      "https://*.cuckcapital.cr/*",
     ],
     background: { service_worker: "src/background/index.ts", type: "module" },
     action: {

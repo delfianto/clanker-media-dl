@@ -33,14 +33,17 @@ function matchPage(href: string, pathname: string): PageMatch | undefined {
 
     // Check gallery matches first.
     if (gc?.galleryMatches.some((p) => patternToRegex(p).test(href))) {
-      if (gc.viewerIndicator) {
-        // imagebam: viewer and gallery share /view/*. If the viewerIndicator
-        // element IS present we're on a single-image viewer; fall through.
-        if (!document.querySelector(gc.viewerIndicator)) {
+      const guard = gc.pathGuard;
+      if (!guard || new RegExp(guard).test(pathname)) {
+        if (gc.viewerIndicator) {
+          // imagebam: viewer and gallery share /view/*. If the viewerIndicator
+          // element IS present we're on a single-image viewer; fall through.
+          if (!document.querySelector(gc.viewerIndicator)) {
+            return { model, pageType: "gallery" };
+          }
+        } else {
           return { model, pageType: "gallery" };
         }
-      } else {
-        return { model, pageType: "gallery" };
       }
     }
 
