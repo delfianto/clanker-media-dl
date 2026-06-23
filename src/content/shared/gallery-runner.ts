@@ -6,8 +6,8 @@ import { createDownloadAllButton } from "./gallery-ui";
 // ── Subfolder computation ────────────────────────────────────────────────────
 
 function buildSubfolder(albumId: string, config: MDConfig): string {
-  if (!config.autoFolderPerAlbum) return config.subfolderPrefix;
-  return config.subfolderPrefix ? `${config.subfolderPrefix}/${albumId}` : albumId;
+  if (!config.autoFolderPerAlbum) return config.downloadDirectory;
+  return config.downloadDirectory ? `${config.downloadDirectory}/${albumId}` : albumId;
 }
 
 // ── URL helpers ──────────────────────────────────────────────────────────────

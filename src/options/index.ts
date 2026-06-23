@@ -401,14 +401,14 @@ function renderDownloadsSettings(): void {
     persist();
   });
 
-  // Subfolder prefix
-  const prefixInput = el("input", {
+  // Download directory
+  const dirInput = el("input", {
     type: "text",
-    value: settings.subfolderPrefix,
-    placeholder: "e.g. bunkr-saves",
+    value: settings.downloadDirectory,
+    placeholder: "e.g. Clanker",
   });
-  prefixInput.addEventListener("input", () => {
-    settings.subfolderPrefix = prefixInput.value;
+  dirInput.addEventListener("input", () => {
+    settings.downloadDirectory = dirInput.value;
     persistSoon();
   });
 
@@ -432,7 +432,7 @@ function renderDownloadsSettings(): void {
         el("div", { className: "settings-label", textContent: "Auto-folder per album" }),
         el("div", {
           className: "settings-hint",
-          textContent: "Creates Downloads/{prefix}/{albumId}/ per job",
+          textContent: "Creates Downloads/{directory}/{albumId}/ per job",
         }),
       ]),
       el("label", { className: "hoster-toggle" }, [
@@ -444,13 +444,13 @@ function renderDownloadsSettings(): void {
     ]),
     el("div", { className: "settings-field" }, [
       el("div", {}, [
-        el("div", { className: "settings-label", textContent: "Subfolder prefix" }),
+        el("div", { className: "settings-label", textContent: "Download directory" }),
         el("div", {
           className: "settings-hint",
-          textContent: "Relative path inside your browser's downloads folder",
+          textContent: "Relative path inside your browser's default downloads folder",
         }),
       ]),
-      prefixInput,
+      dirInput,
     ]),
     el("div", { className: "settings-field" }, [
       el("div", {}, [
@@ -568,10 +568,11 @@ function switchTab(tab: Tab): void {
   }
 }
 
-// ── init ─────────────────────────────────────────────
 async function init(): Promise<void> {
   try {
-    settings = (await browser.storage.local.get(DEFAULT_SETTINGS)) as Settings;
+    const keys = { ...DEFAULT_SETTINGS, subfolderPrefix: "" };
+    const raw = (await browser.storage.local.get(keys)) as any;
+    settings = raw as Settings;
   } catch {
     settings = clone(DEFAULT_SETTINGS);
   }
@@ -581,7 +582,8 @@ async function init(): Promise<void> {
   }
   // Heal missing gallery/log settings (upgrade from older storage schema).
   settings.maxParallel ??= DEFAULT_SETTINGS.maxParallel;
-  settings.subfolderPrefix ??= DEFAULT_SETTINGS.subfolderPrefix;
+  settings.downloadDirectory ??=
+    (settings as any).subfolderPrefix ?? DEFAULT_SETTINGS.downloadDirectory;
   settings.autoFolderPerAlbum ??= DEFAULT_SETTINGS.autoFolderPerAlbum;
   settings.verboseLogging ??= DEFAULT_SETTINGS.verboseLogging;
 

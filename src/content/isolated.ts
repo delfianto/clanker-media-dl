@@ -151,7 +151,10 @@ async function relayBlob(id: string, url: string): Promise<void> {
 async function init(): Promise<void> {
   let settings: Settings;
   try {
-    settings = (await browser.storage.local.get(DEFAULT_SETTINGS)) as Settings;
+    const keys = { ...DEFAULT_SETTINGS, subfolderPrefix: "" };
+    const raw = (await browser.storage.local.get(keys)) as any;
+    settings = raw as Settings;
+    settings.downloadDirectory ??= raw.subfolderPrefix ?? DEFAULT_SETTINGS.downloadDirectory;
   } catch {
     settings = DEFAULT_SETTINGS;
   }
@@ -178,7 +181,7 @@ async function init(): Promise<void> {
     hosterId: model.id,
     pageType,
     maxParallel: settings.maxParallel,
-    subfolderPrefix: settings.subfolderPrefix,
+    downloadDirectory: settings.downloadDirectory,
     autoFolderPerAlbum: settings.autoFolderPerAlbum,
   };
   document.dispatchEvent(new CustomEvent("__md_config__", { detail: JSON.stringify(config) }));

@@ -16,9 +16,9 @@ export async function downloadBlob(
       albumId = model.getGalleryName(document) ?? "";
     }
     if (config.autoFolderPerAlbum && albumId) {
-      subfolder = config.subfolderPrefix ? `${config.subfolderPrefix}/${albumId}` : albumId;
+      subfolder = config.downloadDirectory ? `${config.downloadDirectory}/${albumId}` : albumId;
     } else {
-      subfolder = config.subfolderPrefix;
+      subfolder = config.downloadDirectory;
     }
   }
 
