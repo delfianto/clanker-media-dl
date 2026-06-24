@@ -13,27 +13,11 @@ export async function downloadBlob(
   if (config) {
     let albumName = "";
     if (model?.getGalleryName) {
-      const detected = model.getGalleryName(document);
-      if (detected) {
-        if (detected.startsWith("http")) {
-          try {
-            const res = await fetch(detected);
-            if (res.ok) {
-              const text = await res.text();
-              const parser = new DOMParser();
-              const doc = parser.parseFromString(text, "text/html");
-              albumName = model.getGalleryName(doc) || "";
-            }
-          } catch (e) {
-            console.error("[md] failed to fetch gallery name:", e);
-          }
-          if (!albumName) {
-            albumName = detected.split("/").at(-1) || "";
-          }
-        } else {
-          albumName = detected;
-        }
-      }
+      // The model owns all gallery-name resolution — including any secondary
+      // page fetches (imagebam's "Back to gallery" link). The shared code just
+      // awaits the result; no hoster-specific URL heuristics here.
+      const detected = await model.getGalleryName(document);
+      if (detected) albumName = detected;
     }
     if (config.autoFolderPerAlbum && albumName) {
       const safeName = albumName.replace(new RegExp('[/\\\\:*?"<>|]', "g"), "_").trim();

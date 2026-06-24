@@ -7,6 +7,9 @@ import type {
   MDDeleteJobRequest,
   MDCancelJobRequest,
   MDResumeJobRequest,
+  MDCrawlStartRequest,
+  MDCrawlProgressRequest,
+  MDCrawlDoneRequest,
 } from "../types/messages";
 import { crossOriginFetchBlob } from "./fetcher";
 import { startGalleryJob, attemptDownload } from "./gallery";
@@ -18,45 +21,67 @@ import {
   resumeJob,
   cancelAllJobs,
   resumeAllJobs,
+  clearAllJobs,
 } from "./job-store";
+import { startCrawlJob, updateCrawlProgress, finishCrawlJob } from "./gallery";
 import { sanitizeFilename } from "./sanitize";
+import { ALL_MODELS } from "../hosts/index";
 
 // Recover any jobs that were mid-flight when the SW was last terminated.
 void resumeRunningJobs();
 
-// Register header modification rules for Erome downloads (Referer check bypass)
+// Register declarativeNetRequest header-modification rules declared by each
+// hoster model (e.g. erome's Referer bypass). Rule IDs are derived from the
+// model's position in ALL_MODELS so they're stable across restarts. The SW
+// knows nothing about which hosters need rules or what headers they set —
+// it just reads the models.
+const DNR_RULE_BASE_ID = 129258;
+
 async function setupDeclarativeRules(): Promise<void> {
-  const RULE_ID = 129258;
   try {
-    const rules = await browser.declarativeNetRequest.getDynamicRules();
-    const ruleExists = rules.some((r) => r.id === RULE_ID);
-    if (!ruleExists) {
-      const newRule = {
-        id: RULE_ID,
-        priority: 1,
-        action: {
-          type: "modifyHeaders" as const,
-          requestHeaders: [
-            {
-              header: "Referer",
-              operation: "set" as const,
-              value: "https://www.erome.com/",
-            },
-          ],
-        },
-        condition: {
-          urlFilter: "*://*.erome.com/*",
-          resourceTypes: [
-            "media" as const,
-            "xmlhttprequest" as const,
-            "other" as const,
-            "image" as const,
-          ],
-        },
-      };
+    const existing = await browser.declarativeNetRequest.getDynamicRules();
+    const existingIds = new Set(existing.map((r) => r.id));
+
+    // Build the desired rule set from the models.
+    const desiredRules = ALL_MODELS.flatMap((model, modelIdx) => {
+      const rules = model.headerRules ?? [];
+      return rules.map((rule, ruleIdx) => {
+        const id = DNR_RULE_BASE_ID + modelIdx * 100 + ruleIdx;
+        return {
+          id,
+          priority: 1,
+          action: {
+            type: "modifyHeaders" as const,
+            requestHeaders: [
+              {
+                header: rule.header,
+                operation: "set" as const,
+                value: rule.value,
+              },
+            ],
+          },
+          condition: {
+            urlFilter: rule.urlFilter,
+            resourceTypes: [
+              "media" as const,
+              "xmlhttprequest" as const,
+              "other" as const,
+              "image" as const,
+            ],
+          },
+        };
+      });
+    });
+
+    // Remove rules that exist but are no longer desired, add new ones.
+    const desiredIds = new Set(desiredRules.map((r) => r.id));
+    const toRemove = [...existingIds].filter((id) => !desiredIds.has(id));
+    const toAdd = desiredRules.filter((r) => !existingIds.has(r.id));
+
+    if (toRemove.length > 0 || toAdd.length > 0) {
       await browser.declarativeNetRequest.updateDynamicRules({
-        removeRuleIds: [RULE_ID],
-        addRules: [newRule],
+        removeRuleIds: toRemove,
+        addRules: toAdd,
       });
     }
   } catch (err) {
@@ -130,6 +155,41 @@ browser.runtime.onMessage.addListener((msg: unknown): Promise<AnyResponse> | und
     return resumeAllJobs((r) => {
       void startGalleryJob(r);
     }).then((): void => {});
+  }
+
+  if (m["type"] === "MD_CLEAR_JOBS") {
+    return clearAllJobs().then((): void => {});
+  }
+
+  if (m["type"] === "MD_CRAWL_START" && typeof m["crawlId"] === "string") {
+    const req = m as unknown as MDCrawlStartRequest;
+    return startCrawlJob({
+      crawlId: req.crawlId,
+      hosterId: req.hosterId,
+      albumName: req.albumName,
+      setCount: req.setCount,
+    })
+      .then((): void => {})
+      .catch((err: unknown) => console.error("[md] crawl start failed:", err));
+  }
+
+  if (m["type"] === "MD_CRAWL_PROGRESS" && typeof m["crawlId"] === "string") {
+    const req = m as unknown as MDCrawlProgressRequest;
+    return updateCrawlProgress({
+      crawlId: req.crawlId,
+      resolvedCount: req.resolvedCount,
+      failedCount: req.failedCount,
+      setCount: req.setCount,
+    })
+      .then((): void => {})
+      .catch(() => {});
+  }
+
+  if (m["type"] === "MD_CRAWL_DONE" && typeof m["crawlId"] === "string") {
+    const req = m as unknown as MDCrawlDoneRequest;
+    return finishCrawlJob({ crawlId: req.crawlId, aborted: req.aborted })
+      .then((): void => {})
+      .catch(() => {});
   }
 
   return undefined;

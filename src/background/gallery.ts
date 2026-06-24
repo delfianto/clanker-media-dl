@@ -12,6 +12,7 @@ import { appendLog } from "./logger";
 import { isMediaFile, isTransientError } from "./media-util";
 import { sanitizeFilename } from "./sanitize";
 import { DEFAULT_SETTINGS } from "../settings/schema";
+import { getModel } from "../hosts/index";
 
 let activeJobPromise: Promise<void> = Promise.resolve();
 
@@ -130,9 +131,17 @@ export async function attemptDownload(
   url: string,
   filePath: string,
   jobId?: string,
+  hosterId?: string,
 ): Promise<void> {
-  if (url.includes("erome.com") && isMediaFile(filePath)) {
-    return downloadViaOffscreen(url, filePath, jobId);
+  // Check the model's offscreenForMediaFiles flag instead of hardcoding the
+  // hoster's domain. The hosterId is passed from runQueue (gallery downloads);
+  // single-download callers don't pass it, but offscreen-only hosters (erome)
+  // don't have single-download pages anyway.
+  if (hosterId) {
+    const model = getModel(hosterId as any);
+    if (model?.galleryConfig?.offscreenForMediaFiles && isMediaFile(filePath)) {
+      return downloadViaOffscreen(url, filePath, jobId);
+    }
   }
 
   const downloadId = await browser.downloads.download({
@@ -243,7 +252,7 @@ async function runQueue(
             await sleep(backoff);
           }
           try {
-            await attemptDownload(imageUrl, filePath, job.jobId);
+            await attemptDownload(imageUrl, filePath, job.jobId, job.hosterId);
             succeeded = true;
             break;
           } catch (dlErr) {
@@ -370,7 +379,10 @@ export async function startGalleryJob(req: MDGalleryStartRequest): Promise<void>
       // Read latest status to verify it wasn't cancelled while waiting in the queue
       const latestJobs = await readJobs();
       const latestJob = latestJobs.find((j) => j.jobId === job.jobId);
-      if (latestJob && latestJob.status === "canceled") {
+      // A job that's been cleared from storage is just as dead as one marked
+      // canceled — treat "not found" as aborted so we never resurrect a cleared
+      // job as "done" with zero progress (the repopulate-after-clear bug).
+      if (!latestJob || latestJob.status === "canceled") {
         return;
       }
 
@@ -384,7 +396,8 @@ export async function startGalleryJob(req: MDGalleryStartRequest): Promise<void>
       // Read latest job status from storage to see if it was cancelled
       const latestJobsAfter = await readJobs();
       const latestJobAfter = latestJobsAfter.find((j) => j.jobId === job.jobId);
-      if (latestJobAfter && latestJobAfter.status === "canceled") {
+      // Not-found = cleared by the user mid-run. Don't resurrect it as "done".
+      if (!latestJobAfter || latestJobAfter.status === "canceled") {
         void appendLog(
           "info",
           `Job stopped by user: ${job.completedCount} completed, ${job.failedCount} failed`,
@@ -408,4 +421,80 @@ export async function startGalleryJob(req: MDGalleryStartRequest): Promise<void>
 
   activeJobPromise = myTurn;
   await myTurn;
+}
+
+// ── Crawl phase ──────────────────────────────────────────────────────────────
+// A crawl job is a visible, cancellable placeholder that tracks the
+// girlsreleased listing → per-set resolution BEFORE any download starts. The
+// MAIN world posts MD_CRAWL_START → streams MD_CRAWL_PROGRESS → ends with
+// MD_CRAWL_DONE. Only if the crawl completes un-aborted does it post the
+// MD_GALLERY_START burst for each resolved set. Cancelling the crawl job (via
+// Stop All or the crawl card's Stop) aborts the in-flight set fetches in the
+// content script and suppresses the download burst entirely.
+
+export async function startCrawlJob(req: {
+  crawlId: string;
+  hosterId: string;
+  albumName: string;
+  setCount: number;
+}): Promise<void> {
+  const job: DownloadJob = {
+    jobId: req.crawlId,
+    hosterId: req.hosterId as DownloadJob["hosterId"],
+    subfolder: req.albumName,
+    totalCount: req.setCount,
+    completedCount: 0,
+    failedCount: 0,
+    status: "running",
+    startedAt: Date.now(),
+    isCrawl: true,
+  };
+  await upsertJob(job);
+  broadcastProgress(job);
+  void appendLog(
+    "info",
+    `Crawl started [${req.hosterId}]: resolving ${req.setCount} sets from "${req.albumName}"`,
+    req.crawlId,
+  );
+}
+
+export async function updateCrawlProgress(req: {
+  crawlId: string;
+  resolvedCount: number;
+  failedCount: number;
+  setCount: number;
+}): Promise<void> {
+  const jobs = await readJobs();
+  const idx = jobs.findIndex((j) => j.jobId === req.crawlId);
+  const job = jobs[idx];
+  if (!job || job.status !== "running") return; // cancelled/gone — drop update
+  job.completedCount = req.resolvedCount + req.failedCount;
+  job.failedCount = req.failedCount;
+  job.totalCount = req.setCount;
+  await upsertJob(job);
+  broadcastProgress(job);
+}
+
+export async function finishCrawlJob(req: { crawlId: string; aborted: boolean }): Promise<void> {
+  const jobs = await readJobs();
+  const idx = jobs.findIndex((j) => j.jobId === req.crawlId);
+  const job = jobs[idx];
+  if (!job) return; // already cleared
+  if (req.aborted) {
+    if (job.status === "running") {
+      job.status = "canceled";
+      await upsertJob(job);
+      broadcastProgress(job);
+    }
+    void appendLog("warn", "Crawl aborted by user — no downloads started", req.crawlId);
+    return;
+  }
+  job.status = job.failedCount > 0 ? "error" : "done";
+  await upsertJob(job);
+  broadcastProgress(job);
+  void appendLog(
+    "info",
+    `Crawl complete: ${job.completedCount - job.failedCount} sets resolved, ${job.failedCount} failed — posting download jobs`,
+    req.crawlId,
+  );
 }

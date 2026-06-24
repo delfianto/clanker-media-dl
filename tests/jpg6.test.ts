@@ -49,7 +49,7 @@ describe("JPG6 Hoster Model", () => {
   });
 
   describe("getGalleryName", () => {
-    it("extracts the gallery name from h1", () => {
+    it("extracts the gallery name from h1", async () => {
       const mockDoc = {
         querySelector: (selector: string) => {
           if (selector === "h1") {
@@ -59,7 +59,7 @@ describe("JPG6 Hoster Model", () => {
         },
       };
 
-      const name = jpg6Model.getGalleryName!(mockDoc as unknown as Document);
+      const name = await jpg6Model.getGalleryName!(mockDoc as unknown as Document);
       expect(name).toBe("Janise's Album");
     });
   });

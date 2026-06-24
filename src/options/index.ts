@@ -142,7 +142,11 @@ async function init(): Promise<void> {
 
   $("btn-clear-history").addEventListener("click", () => {
     if (!confirm("Clear all download history?")) return;
-    void browser.storage.local.set({ downloadJobs: [] }).then(() => {
+    // Route through the SW's clearAllJobs (cancels running jobs, then wipes via
+    // runInStorageQueue) instead of writing downloadJobs:[] raw. The raw write
+    // raced with in-flight upsertJob calls, which read the stale list and wrote
+    // it back — that's how a cleared list "suddenly got populated back".
+    void browser.runtime.sendMessage({ type: "MD_CLEAR_JOBS" }).then(() => {
       expandedJobIds.clear();
       $("history-count").textContent = "0 jobs";
       $("dl-jobs").replaceChildren(

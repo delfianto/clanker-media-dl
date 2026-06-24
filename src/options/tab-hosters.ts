@@ -56,7 +56,9 @@ export function renderPanel(
         el("span", { className: "switch" }, [toggle, el("span", { className: "slider" })]),
       ]),
     ]),
-    ...(model.galleryConfig?.isBizarreName ? [renderFallbackNameSection(override, persist)] : []),
+    ...(model.galleryConfig?.isBizarreName
+      ? [renderFallbackNameSection(model, override, persist)]
+      : []),
     renderRulesSection(model, settings, override, persist, persistSoon, () =>
       renderPanel(selected, settings, persist, persistSoon, onUpdateSidebar),
     ),
@@ -64,7 +66,11 @@ export function renderPanel(
   );
 }
 
-function renderFallbackNameSection(override: HosterOverride, persist: () => void): HTMLElement {
+function renderFallbackNameSection(
+  model: HosterModel,
+  override: HosterOverride,
+  persist: () => void,
+): HTMLElement {
   const toggle = el("input", { type: "checkbox", checked: override.useFallbackName ?? false });
   toggle.addEventListener("change", () => {
     override.useFallbackName = toggle.checked;
@@ -77,7 +83,7 @@ function renderFallbackNameSection(override: HosterOverride, persist: () => void
         el("div", { className: "settings-label", textContent: "Use Fallback Name" }),
         el("div", {
           className: "settings-hint",
-          textContent: "Use the ImageBam file ID when the filename is a UUID or garbled text",
+          textContent: `Use the ${model.displayName} file ID when the filename is a UUID or garbled text`,
         }),
       ]),
       el("label", { className: "hoster-toggle" }, [

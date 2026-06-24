@@ -1,35 +1,31 @@
 import { defineConfig, type PluginOption } from "vite-plus";
 import webExtension from "vite-plugin-web-extension";
-import { BUNKR_DOMAINS } from "./src/hosts/bunkr/model";
+import { ALL_MODELS } from "./src/hosts/index";
 
 type Browser = "chrome" | "firefox";
 
 const browser = (process.env["BROWSER"] ?? "chrome") as Browser;
 
-// All pages where content scripts are injected — both viewer and gallery pages.
-// isolated.ts + main.ts dispatch based on pageType at runtime.
-const CONTENT_MATCHES = [
-  // Viewer pages
-  "https://www.imagebam.com/image/*",
-  "https://www.imagebam.com/view/*", // also covers gallery pages (distinguished by DOM)
-  "https://www.imagebam.com/gallery/*", // legacy gallery pages
-  "https://imgbox.com/*",
-  "https://ibb.co/*",
-  ...BUNKR_DOMAINS.map((d) => `https://${d}/f/*`),
-  // Gallery pages
-  "https://imgbox.com/g/*",
-  "https://ibb.co/album/*",
-  ...BUNKR_DOMAINS.map((d) => `https://${d}/a/*`),
-  "https://*.erome.com/a/*",
-  "https://jpg6.su/album/*",
-  "https://jpg6.su/*",
-  "https://girlsreleased.com/*",
-  "https://*.girlsreleased.com/*",
-] as const;
+// Derive content-script matches from the models — the model is the single
+// source of truth for which pages each hoster runs on. Adding a new hoster
+// no longer requires editing this file (just add to ALL_MODELS). Deduplicated
+// because some hosters (imagebam) share URL patterns between viewer + gallery.
+const CONTENT_MATCHES = Array.from(
+  new Set(
+    ALL_MODELS.flatMap((m) => {
+      const matches = [...m.viewerMatches];
+      if (m.galleryConfig) matches.push(...m.galleryConfig.galleryMatches);
+      return matches;
+    }),
+  ),
+);
 
 // CDN domains — where the redirector intercepts raw image URLs at document_start.
-// imgbb has no CDN redirect (its thumbnails link straight to the ibb.co viewer).
-const CDN_MATCHES = ["https://*.imagebam.com/*", "https://*.imgbox.com/*"] as const;
+const CDN_MATCHES = Array.from(new Set(ALL_MODELS.flatMap((m) => m.cdnMatches)));
+
+// Host permissions derived from models — each model declares what the SW needs
+// beyond content-script matches (CDN fetches, sign APIs, resolvers, etc.).
+const HOST_PERMISSIONS = Array.from(new Set(ALL_MODELS.flatMap((m) => m.hostPermissions ?? [])));
 
 function makeManifest(target: Browser): Record<string, unknown> {
   const base: Record<string, unknown> = {
@@ -40,25 +36,7 @@ function makeManifest(target: Browser): Record<string, unknown> {
       "One-click image downloads from image hosting sites. Clean, private, no external server.",
     icons: { "48": "icons/icon-48.png", "96": "icons/icon-96.png" },
     permissions: ["storage", "downloads", "declarativeNetRequest", "offscreen"],
-    host_permissions: [
-      "https://*.imagebam.com/*",
-      "https://imgbox.com/*",
-      "https://*.imgbox.com/*",
-      "https://ibb.co/*",
-      "https://*.ibb.co/*",
-      "https://*.imgbb.com/*",
-      "https://*.cdn.cr/*",
-      // bunkr — needed for SW to fetch album/viewer pages for gallery resolution
-      ...BUNKR_DOMAINS.map((d) => `https://${d}/*`),
-      "https://*.erome.com/*",
-      "https://jpg6.su/*",
-      "https://*.cuckcapital.cr/*",
-      "https://girlsreleased.com/*",
-      "https://*.girlsreleased.com/*",
-      "https://*.imx.to/*",
-      "https://www.imagevenue.com/*",
-      "https://*.imagevenue.com/*",
-    ],
+    host_permissions: HOST_PERMISSIONS,
     background: { service_worker: "src/background/index.ts", type: "module" },
     action: {
       default_popup: "src/popup/index.html",

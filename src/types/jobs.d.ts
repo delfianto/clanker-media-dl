@@ -37,4 +37,9 @@ export type DownloadJob = {
   maxParallelImg?: number | undefined;
   maxParallelVid?: number | undefined;
   postedAt?: number | undefined;
+  // True for a crawl-phase job (girlsreleased listing → per-set resolution).
+  // Such jobs show "Crawling N / M sets" instead of file counts, and don't
+  // carry per-file items — the actual downloads spawn as their own jobs once
+  // the crawl completes.
+  isCrawl?: boolean;
 };

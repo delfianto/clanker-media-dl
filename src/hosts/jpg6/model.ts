@@ -44,6 +44,7 @@ export const jpg6Model: HosterModel = {
     uiMode: "button-overlay",
   },
   defaultCssOverrides: "",
+  hostPermissions: ["https://jpg6.su/*"],
   galleryConfig: {
     galleryMatches: ["https://jpg6.su/album/*", "https://jpg6.su/*"],
     pathGuard:
@@ -56,7 +57,7 @@ export const jpg6Model: HosterModel = {
     },
     collectAllItems: collectJpg6Items,
   },
-  getGalleryName: (doc: Document) => {
+  getGalleryName: async (doc: Document): Promise<string | null> => {
     const h1 = doc.querySelector("h1");
     if (h1) return h1.textContent?.trim() ?? null;
     const breadcrumb = doc.querySelector<HTMLAnchorElement>('a[data-text="album-name"]');
