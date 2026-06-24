@@ -27,7 +27,9 @@ export function parseSet(json: unknown): ParsedSet | null {
   if (!json || typeof json !== "object") return null;
   const data = json as { set?: unknown };
   const setArray = data.set;
-  if (!Array.isArray(setArray) || setArray.length < 6) {
+  // Need at least the files array (index 4); models (index 5) is optional — a
+  // set with no assigned model must still resolve rather than be dropped.
+  if (!Array.isArray(setArray) || setArray.length < 5) {
     return null;
   }
 
@@ -47,7 +49,9 @@ export function parseSet(json: unknown): ParsedSet | null {
 
   const files: { viewerUrl: string; thumbnailUrl: string; filename: string }[] = [];
   for (const file of filesArray) {
-    if (!Array.isArray(file) || file.length < 6) {
+    // Need viewerUrl (3) + thumbnailUrl (4); originalFilename (5) is optional
+    // (filename falls back to the viewer-URL slug below).
+    if (!Array.isArray(file) || file.length < 5) {
       continue;
     }
     const viewerUrl = String(file[3] || "");

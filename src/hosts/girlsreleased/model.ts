@@ -8,8 +8,8 @@ function collectGirlsreleasedItems(root?: Document | Element): GalleryJobItem[] 
     !root && typeof window !== "undefined" && window.location.pathname.includes("/site/");
 
   if (isSitePage) {
-    const scope = root ?? document;
-    const anchors = Array.from(scope.querySelectorAll<HTMLAnchorElement>("a"));
+    // isSitePage implies !root, so the scope is always the live document.
+    const anchors = Array.from(document.querySelectorAll<HTMLAnchorElement>("a"));
     const items: GalleryJobItem[] = [];
     const visited = new Set<string>();
 
