@@ -1,7 +1,53 @@
 import browser from "webextension-polyfill";
-import type { DownloadJob } from "../types/jobs";
-import type { MDListJobsResponse } from "../types/messages";
+import type { DownloadJob, DownloadJobItem } from "../types/jobs";
+import type { MDListJobsResponse, MDGetJobResponse } from "../types/messages";
 import { $, el } from "./dom";
+
+// Render job items into a container. Used both for initial card render (when
+// items are present from listJobs) and for on-demand load (when a card is
+// expanded and items are fetched via MD_GET_JOB).
+function renderItemsInto(container: HTMLElement, job: DownloadJob): void {
+  container.replaceChildren();
+  if (!job.items) return;
+  for (const item of job.items) {
+    const itemEl = makeItemEl(item);
+    container.append(itemEl);
+  }
+}
+
+function makeItemEl(item: DownloadJobItem): HTMLElement {
+  const statusIcon =
+    item.status === "done"
+      ? "✓"
+      : item.status === "error"
+        ? "✗"
+        : item.status === "running"
+          ? "●"
+          : "○";
+  const itemStatusClass = `item-status ${item.status}`;
+  const filenameEl = item.sourceUrl
+    ? el("a", {
+        className: "item-filename item-filename-link",
+        textContent: item.filename,
+        title: item.displayName,
+        href: item.sourceUrl,
+        target: "_blank",
+        rel: "noopener noreferrer",
+      })
+    : el("span", {
+        className: "item-filename",
+        textContent: item.filename,
+        title: item.displayName,
+      });
+  const itemEl = el("div", { className: "job-item" }, [
+    el("span", { className: itemStatusClass, textContent: statusIcon }),
+    filenameEl,
+  ]);
+  if (item.error) {
+    itemEl.append(el("span", { className: "item-error", textContent: ` (${item.error})` }));
+  }
+  return itemEl;
+}
 
 export function formatJobStatus(job: DownloadJob): string {
   if (job.isCrawl) {
@@ -45,42 +91,7 @@ export function renderJobCard(
   const isExpanded = expandedJobIds.has(job.jobId);
   const itemsContainer = el("div", { className: "job-items" });
   if (job.items && job.items.length > 0) {
-    for (const item of job.items) {
-      const statusIcon =
-        item.status === "done"
-          ? "✓"
-          : item.status === "error"
-            ? "✗"
-            : item.status === "running"
-              ? "●"
-              : "○";
-      const itemStatusClass = `item-status ${item.status}`;
-      // Render the filename as a link to the hoster page when sourceUrl is
-      // available, so the user can click through to verify if a failed link
-      // is truly dead. Falls back to a plain span when no URL is known.
-      const filenameEl = item.sourceUrl
-        ? el("a", {
-            className: "item-filename item-filename-link",
-            textContent: item.filename,
-            title: item.displayName,
-            href: item.sourceUrl,
-            target: "_blank",
-            rel: "noopener noreferrer",
-          })
-        : el("span", {
-            className: "item-filename",
-            textContent: item.filename,
-            title: item.displayName,
-          });
-      const itemEl = el("div", { className: "job-item" }, [
-        el("span", { className: itemStatusClass, textContent: statusIcon }),
-        filenameEl,
-      ]);
-      if (item.error) {
-        itemEl.append(el("span", { className: "item-error", textContent: ` (${item.error})` }));
-      }
-      itemsContainer.append(itemEl);
-    }
+    renderItemsInto(itemsContainer, job);
   }
 
   const deleteBtn = el("button", {
@@ -171,7 +182,7 @@ export function renderJobCard(
     ],
   );
 
-  card.addEventListener("click", (event) => {
+  card.addEventListener("click", async (event) => {
     const target = event.target as HTMLElement;
     if (target.closest(".job-items")) return;
 
@@ -183,6 +194,23 @@ export function renderJobCard(
     } else {
       card.classList.add("expanded");
       expandedJobIds.add(job.jobId);
+      // Items are NOT loaded by listJobs (metadata only). Fetch them on
+      // expand via MD_GET_JOB so the IDB query runs once per click, not
+      // once per 3s poll for all 139 jobs.
+      if (job.items && job.items.length === 0) {
+        try {
+          const res = (await browser.runtime.sendMessage({
+            type: "MD_GET_JOB",
+            jobId: job.jobId,
+          })) as MDGetJobResponse;
+          if (res.job?.items && res.job.items.length > 0) {
+            job.items = res.job.items;
+            renderItemsInto(itemsContainer, job);
+          }
+        } catch {
+          // ignore — card stays expanded with empty items
+        }
+      }
     }
   });
 

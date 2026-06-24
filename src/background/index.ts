@@ -11,6 +11,8 @@ import type {
   MDCrawlProgressRequest,
   MDCrawlDoneRequest,
   MDGetLogsResponse,
+  MDGetJobRequest,
+  MDGetJobResponse,
 } from "../types/messages";
 import { crossOriginFetchBlob } from "./fetcher";
 import { startGalleryJob, attemptDownload, registerJobTab } from "./gallery";
@@ -28,7 +30,7 @@ import { startCrawlJob, updateCrawlProgress, finishCrawlJob } from "./gallery";
 import { sanitizeFilename } from "./sanitize";
 import { ALL_MODELS } from "../hosts/index";
 import { getLogs, clearLogs } from "./logger";
-import { migrateJobsIfNeeded } from "./job-store";
+import { migrateJobsIfNeeded, getJobWithItems } from "./job-store";
 import { migrateLogsIfNeeded } from "./logger";
 
 // Recover any jobs that were mid-flight when the SW was last terminated.
@@ -102,6 +104,7 @@ type AnyResponse =
   | MDFetchBlobResponse
   | MDListJobsResponse
   | MDGetLogsResponse
+  | MDGetJobResponse
   | { error?: string }
   | void;
 
@@ -211,6 +214,11 @@ browser.runtime.onMessage.addListener(
 
     if (m["type"] === "MD_GET_LOGS") {
       return getLogs().then((logs): MDGetLogsResponse => ({ logs }));
+    }
+
+    if (m["type"] === "MD_GET_JOB" && typeof m["jobId"] === "string") {
+      const req = m as unknown as MDGetJobRequest;
+      return getJobWithItems(req.jobId).then((job): MDGetJobResponse => ({ job }));
     }
 
     if (m["type"] === "MD_CLEAR_LOGS") {
