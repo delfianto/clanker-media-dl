@@ -91,6 +91,7 @@ export async function listJobs(): Promise<DownloadJob[]> {
       if (b.postedAt !== a.postedAt) {
         return b.postedAt - a.postedAt;
       }
+      return a.subfolder.localeCompare(b.subfolder);
     }
     return b.startedAt - a.startedAt;
   });

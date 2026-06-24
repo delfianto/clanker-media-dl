@@ -67,8 +67,8 @@ describe("sanitizeFilename", () => {
       expect(sanitizeFilename("")).toBe("file");
     });
 
-    it("reduces all-illegal input to single underscore", () => {
-      expect(sanitizeFilename("///")).toBe("_");
+    it("reduces all-illegal input to fallback 'file'", () => {
+      expect(sanitizeFilename("///")).toBe("file");
     });
 
     it("returns 'file' when only spaces and dots", () => {
