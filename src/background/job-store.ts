@@ -383,6 +383,10 @@ export async function resumeJob(
   const record = await idbGetJob(jobId);
   if (!record || (record.status !== "canceled" && record.status !== "error")) return;
 
+  const currentSettings = await browser.storage.local.get(DEFAULT_SETTINGS);
+  record.maxParallelImg = currentSettings.maxParallelImg as number;
+  record.maxParallelVid = currentSettings.maxParallelVid as number;
+
   uncancelJobInCache(jobId);
   const req: MDGalleryStartRequest = {
     type: "MD_GALLERY_START",
@@ -390,8 +394,8 @@ export async function resumeJob(
     hosterId: record.hosterId as MDGalleryStartRequest["hosterId"],
     subfolder: record.subfolder,
     items: (record.originalItems ?? []) as MDGalleryStartRequest["items"],
-    maxParallelImg: record.maxParallelImg ?? DEFAULT_SETTINGS.maxParallelImg,
-    maxParallelVid: record.maxParallelVid ?? DEFAULT_SETTINGS.maxParallelVid,
+    maxParallelImg: record.maxParallelImg,
+    maxParallelVid: record.maxParallelVid,
     ...(record.postedAt ? { postedAt: record.postedAt } : {}),
   };
 
