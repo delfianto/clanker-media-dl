@@ -25,10 +25,22 @@ function setNativeUi(enabled: boolean): void {
 }
 
 function updateBadge(): void {
-  const text = activeJobs > 0 ? String(activeJobs) : "";
-  browser.action.setBadgeText({ text }).catch(() => {});
+  // A small green dot while downloads are active — clearer at a glance than a
+  // tiny job count (the popup has the actual numbers). It's a "●" glyph in green
+  // over a transparent badge background, so it reads as a status dot on the icon
+  // rather than a colored chip. setBadgeTextColor is Chrome 110+/Firefox; cast
+  // since webextension-polyfill's types may not include it. Firefox no-ops the
+  // bits it lacks.
+  const action = browser.action as unknown as {
+    setBadgeTextColor?: (details: { color: string }) => Promise<void>;
+  };
   if (activeJobs > 0) {
-    void browser.action.setBadgeBackgroundColor({ color: "#3b82f6" }).catch(() => {});
+    void browser.action.setBadgeText({ text: "●" }).catch(() => {});
+    void action.setBadgeTextColor?.({ color: "#22c55e" }).catch(() => {});
+    // Transparent background so only the green dot shows over the icon.
+    void browser.action.setBadgeBackgroundColor({ color: [0, 0, 0, 0] }).catch(() => {});
+  } else {
+    void browser.action.setBadgeText({ text: "" }).catch(() => {});
   }
 }
 
