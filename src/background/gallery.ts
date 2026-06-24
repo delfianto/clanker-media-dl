@@ -8,6 +8,8 @@ import type { DownloadJob, DownloadJobItem } from "../types/jobs";
 import { trackDownload } from "./download-tracker";
 import {
   upsertJob,
+  upsertJobItem,
+  insertJobItems,
   getJob,
   setJobUpdatedListener,
   isJobCancelled,
@@ -252,7 +254,7 @@ async function runQueue(
 
       if (job.items?.[idx]) {
         job.items[idx].status = "running";
-        await upsertJob(job);
+        await upsertJobItem(job, idx);
         broadcastItemUpdate(job, idx);
       }
 
@@ -271,7 +273,7 @@ async function runQueue(
           job.items[idx].status = "error";
           job.items[idx].error = String(resolveErr);
         }
-        await upsertJob(job);
+        await upsertJobItem(job, idx);
         broadcastItemUpdate(job, idx);
         continue;
       }
@@ -281,7 +283,7 @@ async function runQueue(
         job.status = "canceled";
         if (job.items?.[idx]) {
           job.items[idx].status = "pending";
-          await upsertJob(job);
+          await upsertJobItem(job, idx);
         }
         break;
       }
@@ -309,7 +311,7 @@ async function runQueue(
             job.items[idx].filename = existing.filename || safeFilename;
           }
           void appendLog("debug", `Skipped (exists in history): ${displayName}`, job.jobId);
-          await upsertJob(job);
+          await upsertJobItem(job, idx);
           broadcastItemUpdate(job, idx);
           continue;
         }
@@ -349,7 +351,7 @@ async function runQueue(
         if (isCanceled) {
           if (job.items?.[idx]) {
             job.items[idx].status = "pending";
-            await upsertJob(job);
+            await upsertJobItem(job, idx);
           }
           break;
         }
@@ -379,7 +381,7 @@ async function runQueue(
           job.items[idx].error = String(outerErr);
         }
       }
-      await upsertJob(job);
+      await upsertJobItem(job, idx);
       broadcastItemUpdate(job, idx);
     }
   }
@@ -434,6 +436,7 @@ export async function startGalleryJob(req: MDGalleryStartRequest): Promise<void>
   job.completedCount = job.items?.filter((item) => item.status === "done").length ?? 0;
 
   await upsertJob(job);
+  await insertJobItems(job);
   broadcastJobStart(job);
 
   // Partition items by media type so videos (large, CDN-throttled) get their

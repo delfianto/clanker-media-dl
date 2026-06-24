@@ -11,7 +11,6 @@ import {
   idbPutJob,
   idbDeleteJob,
   idbClearAllJobs,
-  idbPutJobItem,
   idbGetJobItems,
   idbDeleteJobItems,
   idbClearAllJobItems,
@@ -173,9 +172,9 @@ function toJobRecord(job: DownloadJob): DownloadJobRecord {
 
 // ── Public API ───────────────────────────────────────────────────────────────
 
-// Upsert a job + all its items to IDB. Writes ONE job record + N item records
-// (not all 101 jobs like the old storage.local approach). The per-item writes
-// are simple record puts — no JSON serialization of sibling jobs.
+// Upsert a job record (counters + metadata only). Does NOT touch jobItems —
+// use upsertJobItem for per-item updates. Called on job start (after items are
+// bulk-inserted via insertJobItems) and on job completion.
 export async function upsertJob(job: DownloadJob): Promise<void> {
   // If the job was cancelled while we were working, respect that.
   if (isJobCancelled(job.jobId) && job.status === "running") {
@@ -185,31 +184,76 @@ export async function upsertJob(job: DownloadJob): Promise<void> {
   const record = toJobRecord(job);
   await idbPutJob(record);
 
-  // Write items to jobItems store
-  if (job.items) {
-    for (let i = 0; i < job.items.length; i++) {
-      const item = job.items[i];
-      if (!item) continue;
-      const itemRecord: JobItemRecord = {
-        jobId: job.jobId,
-        idx: i,
-        subfolder: job.subfolder,
-        displayName: item.displayName,
-        filename: item.filename,
-        status: item.status,
-        ...(item.error ? { error: item.error } : {}),
-        ...(item.sourceUrl ? { sourceUrl: item.sourceUrl } : {}),
-      };
-      await idbPutJobItem(itemRecord);
-    }
-  }
-
   // GC: cap completed jobs at 50 (only when a job transitions to done/error)
   if (job.status === "done" || job.status === "error") {
     await idbGcCompletedJobs(50).catch((err) => {
       console.warn("[md] GC pass failed:", err);
     });
   }
+
+  if (onJobUpdated) {
+    onJobUpdated(job);
+  }
+}
+
+// Bulk-insert all items for a job at start. Called once per job — not per item.
+export async function insertJobItems(job: DownloadJob): Promise<void> {
+  if (!job.items) return;
+  const db = await openDB();
+  const tx = db.transaction("jobItems", "readwrite");
+  const store = tx.objectStore("jobItems");
+  for (let i = 0; i < job.items.length; i++) {
+    const item = job.items[i];
+    if (!item) continue;
+    const itemRecord: JobItemRecord = {
+      jobId: job.jobId,
+      idx: i,
+      subfolder: job.subfolder,
+      displayName: item.displayName,
+      filename: item.filename,
+      status: item.status,
+      ...(item.error ? { error: item.error } : {}),
+      ...(item.sourceUrl ? { sourceUrl: item.sourceUrl } : {}),
+    };
+    store.put(itemRecord);
+  }
+  await new Promise<void>((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+// Update ONE item + job counters in a single transaction. This is the hot
+// path during a crawl — called 2x per item (status→running, then done/error).
+// Writes exactly 2 records (1 job + 1 item), not 50.
+export async function upsertJobItem(job: DownloadJob, idx: number): Promise<void> {
+  if (isJobCancelled(job.jobId) && job.status === "running") {
+    job.status = "canceled";
+  }
+
+  const item = job.items?.[idx];
+  if (!item) return;
+
+  const db = await openDB();
+  const tx = db.transaction(["jobs", "jobItems"], "readwrite");
+  // Update job counters
+  tx.objectStore("jobs").put(toJobRecord(job));
+  // Update the ONE changed item
+  tx.objectStore("jobItems").put({
+    jobId: job.jobId,
+    idx,
+    subfolder: job.subfolder,
+    displayName: item.displayName,
+    filename: item.filename,
+    status: item.status,
+    ...(item.error ? { error: item.error } : {}),
+    ...(item.sourceUrl ? { sourceUrl: item.sourceUrl } : {}),
+  } as JobItemRecord);
+
+  await new Promise<void>((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
 
   if (onJobUpdated) {
     onJobUpdated(job);
@@ -224,15 +268,39 @@ export async function getJob(jobId: string): Promise<DownloadJob | null> {
   return reconstructJob(record, items);
 }
 
-// List all jobs with items reconstructed, sorted by startedAt ascending.
+// List all jobs WITHOUT items — job metadata only. The History tab renders
+// cards from this; items are loaded on-demand when a card is expanded.
+// With 139 jobs this returns ~139 small records instead of 139 × 50 items.
 export async function listJobs(): Promise<DownloadJob[]> {
   const records = await idbGetAllJobs();
-  const jobs: DownloadJob[] = [];
-  for (const record of records) {
-    const items = await idbGetJobItems(record.jobId);
-    jobs.push(reconstructJob(record, items));
-  }
+  const jobs: DownloadJob[] = records.map((record) => ({
+    jobId: record.jobId,
+    hosterId: record.hosterId as DownloadJob["hosterId"],
+    subfolder: record.subfolder,
+    totalCount: record.totalCount,
+    completedCount: record.completedCount,
+    failedCount: record.failedCount,
+    status: record.status,
+    startedAt: record.startedAt,
+    items: [],
+    ...(record.originalItems
+      ? { originalItems: record.originalItems as DownloadJob["originalItems"] }
+      : {}),
+    ...(record.maxParallelImg ? { maxParallelImg: record.maxParallelImg } : {}),
+    ...(record.maxParallelVid ? { maxParallelVid: record.maxParallelVid } : {}),
+    ...(record.postedAt ? { postedAt: record.postedAt } : {}),
+    ...(record.isCrawl ? { isCrawl: record.isCrawl } : {}),
+  }));
   return jobs.sort((a, b) => a.startedAt - b.startedAt);
+}
+
+// Load items for a specific job — called when a card is expanded in the
+// History tab. Returns a DownloadJob with items populated.
+export async function getJobWithItems(jobId: string): Promise<DownloadJob | null> {
+  const record = await idbGetJob(jobId);
+  if (!record) return null;
+  const items = await idbGetJobItems(jobId);
+  return reconstructJob(record, items);
 }
 
 // Read all job records (without items) — lighter than listJobs, used internally

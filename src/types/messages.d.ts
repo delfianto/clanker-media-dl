@@ -176,6 +176,10 @@ export type MDCrawlDoneRequest = {
 // SW → options page: a single log entry to append live in the Logs tab.
 export type MDLogMessage = { type: "MD_LOG"; entry: DownloadLog };
 
+// Options page → SW: fetch a single job with its items (for card expand).
+export type MDGetJobRequest = { type: "MD_GET_JOB"; jobId: string };
+export type MDGetJobResponse = { job: DownloadJob | null };
+
 // Options page → SW: fetch all logs (for Logs tab + Copy button). Reads from
 // IDB, flushing buffered debug entries first.
 export type MDGetLogsRequest = { type: "MD_GET_LOGS" };
