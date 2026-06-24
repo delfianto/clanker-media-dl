@@ -255,9 +255,11 @@ export async function upsertJobItem(job: DownloadJob, idx: number): Promise<void
     tx.onerror = () => reject(tx.error);
   });
 
-  if (onJobUpdated) {
-    onJobUpdated(job);
-  }
+  // Do NOT call onJobUpdated here — broadcastItemUpdate in gallery.ts already
+  // sends the progress message. Calling onJobUpdated would fire a SECOND
+  // runtime.sendMessage per item (20K extra IPC round-trips during a crawl).
+  // onJobUpdated is only for job-level status changes (done/error/canceled),
+  // which go through upsertJob, not upsertJobItem.
 }
 
 // Read a single job with its items reconstructed.

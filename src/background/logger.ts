@@ -1,6 +1,5 @@
 import browser from "webextension-polyfill";
 import type { DownloadLog, LogLevel } from "../types/jobs";
-import type { MDLogMessage } from "../types/messages";
 import {
   openDB,
   idbAddLog,
@@ -15,6 +14,25 @@ import {
 const MAX_LOGS = 500;
 const FLUSH_INTERVAL_MS = 5000;
 const LEGACY_LOGS_KEY = "downloadLogs";
+
+// ── verboseLogging cache ─────────────────────────────────────────────────────
+// Reading browser.storage.local for every debug log call caused 20K storage
+// IPC reads during a crawl. Cache the setting in memory — read once on startup,
+// update via storage.onChanged.
+let verboseLoggingCached = false;
+let verboseLoggingInitialized = false;
+
+async function initVerboseCache(): Promise<void> {
+  if (verboseLoggingInitialized) return;
+  verboseLoggingInitialized = true;
+  const cfg = await browser.storage.local.get({ verboseLogging: false });
+  verboseLoggingCached = !!cfg["verboseLogging"];
+  browser.storage.onChanged.addListener((changes, area) => {
+    if (area === "local" && changes["verboseLogging"]) {
+      verboseLoggingCached = !!changes["verboseLogging"].newValue;
+    }
+  });
+}
 
 // One-time migration: storage.local downloadLogs → IDB logs store. Idempotent.
 export async function migrateLogsIfNeeded(): Promise<void> {
@@ -81,26 +99,18 @@ export async function flushLogs(): Promise<void> {
 
 export async function appendLog(level: LogLevel, msg: string, jobId?: string): Promise<void> {
   if (level === "debug") {
-    const cfg = await browser.storage.local.get({ verboseLogging: false });
-    if (!cfg["verboseLogging"]) return;
+    await initVerboseCache();
+    if (!verboseLoggingCached) return;
   }
 
   const entry: LogRecord =
     jobId !== undefined ? { ts: Date.now(), level, msg, jobId } : { ts: Date.now(), level, msg };
 
-  // Broadcast to the Logs tab immediately (if open)
-  const broadcast: MDLogMessage = {
-    type: "MD_LOG",
-    entry: {
-      ts: entry.ts,
-      level: entry.level,
-      msg: entry.msg,
-      ...(entry.jobId ? { jobId: entry.jobId } : {}),
-    },
-  };
-  void browser.runtime.sendMessage(broadcast).catch(() => {});
-
-  // Persist: debug → buffer, everything else → IDB immediately
+  // Persist: debug → buffer, everything else → IDB immediately.
+  // NO broadcast via runtime.sendMessage — the Logs tab reads from IDB on
+  // load and on refresh. Broadcasting 20K log entries during a crawl was a
+  // major source of IPC flood. The Logs tab can poll IDB if it wants
+  // near-real-time updates.
   if (level === "debug") {
     debugBuffer.push(entry);
     ensureFlushTimer();
