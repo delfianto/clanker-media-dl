@@ -157,9 +157,15 @@ browser.runtime.onMessage.addListener(
     if (m["type"] === "MD_GALLERY_START") {
       if (sender.tab?.id)
         registerJobTab((m as Record<string, unknown>)["jobId"] as string, sender.tab.id);
-      return startGalleryJob(m as unknown as MDGalleryStartRequest).catch((err: unknown) => {
+
+      // Do NOT return this Promise! Returning it tells Chrome to hold the message
+      // channel open until the job finishes. If a crawl fires 50 jobs, Chrome
+      // holds 50 message ports open for minutes/hours, which causes it to terminate
+      // the Service Worker due to port starvation/timeouts!
+      void startGalleryJob(m as unknown as MDGalleryStartRequest).catch((err: unknown) => {
         console.error("[md] gallery job failed:", err);
       });
+      return; // Close the message channel immediately
     }
 
     if (m["type"] === "MD_LIST_JOBS") {
