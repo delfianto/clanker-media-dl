@@ -5,6 +5,13 @@ import type { MDOffscreenDownloadResponse } from "../types/messages";
 // return a Promise for an async response, or undefined when not handled. The
 // webextension-polyfill types reject the legacy `sendResponse` + `return true`
 // shape, so the async work is wrapped in an IIFE whose Promise is returned.
+
+// Keep-alive ping: Offscreen document runs in a foreground-like context, so
+// its timers are never suspended by V8 (unlike Service Workers). Pinging the
+// SW every 20s completely prevents the 30-second idle termination.
+setInterval(() => {
+  browser.runtime.sendMessage({ type: "MD_KEEPALIVE_PING" }).catch(() => {});
+}, 20000);
 browser.runtime.onMessage.addListener(
   (msg: unknown): Promise<MDOffscreenDownloadResponse> | undefined => {
     const m = msg as Record<string, unknown>;
