@@ -353,9 +353,16 @@ export function runGalleryAdapter(
         const validResults = setResults.filter(
           (r): r is { req: MDGalleryStartRequest; postedAt: number } => r !== null,
         );
+        const getPostedDateString = (postedAt: number): string => {
+          const d = new Date(postedAt * 1000);
+          const p = (n: number) => String(n).padStart(2, "0");
+          return `${d.getUTCFullYear()}.${p(d.getUTCMonth() + 1)}.${p(d.getUTCDate())}`;
+        };
         validResults.sort((a, b) => {
-          if (b.postedAt !== a.postedAt) {
-            return b.postedAt - a.postedAt;
+          const dateA = getPostedDateString(a.postedAt);
+          const dateB = getPostedDateString(b.postedAt);
+          if (dateA !== dateB) {
+            return dateB.localeCompare(dateA);
           }
           return a.req.subfolder.localeCompare(b.req.subfolder);
         });
