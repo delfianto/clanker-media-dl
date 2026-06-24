@@ -12,7 +12,7 @@ describe("Erome Hoster Model", () => {
     const collectAllItems = eromeModel.galleryConfig?.collectAllItems;
     expect(collectAllItems).toBeDefined();
 
-    it("extracts images and videos correctly", () => {
+    it("extracts images and videos correctly", async () => {
       // Mock DOM structure
       const mockImgGroup = {
         querySelectorAll: () => [],
@@ -67,7 +67,7 @@ describe("Erome Hoster Model", () => {
         },
       };
 
-      const items = collectAllItems!(mockScope as unknown as Document);
+      const items = await collectAllItems!(mockScope as unknown as Document);
       expect(items).toHaveLength(3);
 
       expect(items[0]).toEqual({
