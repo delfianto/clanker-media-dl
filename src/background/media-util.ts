@@ -89,7 +89,7 @@ export function isTransientError(err: unknown): boolean {
 export function failureLabel(err: unknown): string {
   const msg = String(err);
   if (
-    /DEAD_LINK|SERVER_BAD_CONTENT|not found|no match|Failed to (?:parse|extract)|extraction failed/i.test(
+    /DEAD_LINK|SERVER_BAD_CONTENT|not found|no match|Failed to (?:parse|extract)|extraction failed|HTTP\s+404/i.test(
       msg,
     )
   ) {
