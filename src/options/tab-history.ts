@@ -224,19 +224,40 @@ export async function loadHistoryTab(expandedJobIds: Set<string>): Promise<void>
   }
   try {
     const res = (await browser.runtime.sendMessage({ type: "MD_LIST_JOBS" })) as MDListJobsResponse;
-    jobsContainer.replaceChildren();
     $("history-count").textContent = `${res.jobs.length} jobs`;
+
     if (res.jobs.length === 0) {
-      jobsContainer.append(
+      jobsContainer.replaceChildren(
         el("p", { className: "default-note", textContent: "No downloads yet." }),
       );
-    } else {
-      for (const job of res.jobs) {
-        jobsContainer.append(
-          renderJobCard(job, expandedJobIds, () => void loadHistoryTab(expandedJobIds)),
-        );
+      return;
+    }
+
+    // Map existing job cards so we can preserve their inner state (like scroll position)
+    const existingCards = new Map<string, HTMLElement>();
+    for (const child of Array.from(jobsContainer.children)) {
+      if (child.classList.contains("job-card")) {
+        existingCards.set(child.id, child as HTMLElement);
       }
     }
+
+    const newChildren: HTMLElement[] = [];
+    for (const job of res.jobs) {
+      const newCard = renderJobCard(job, expandedJobIds, () => void loadHistoryTab(expandedJobIds));
+      const existingCard = existingCards.get(newCard.id);
+
+      if (existingCard) {
+        // Transplant the existing .job-items container to preserve fetched items and scroll position
+        const oldItems = existingCard.querySelector(".job-items");
+        const newItems = newCard.querySelector(".job-items");
+        if (oldItems && newItems) {
+          newCard.replaceChild(oldItems, newItems);
+        }
+      }
+      newChildren.push(newCard);
+    }
+
+    jobsContainer.replaceChildren(...newChildren);
   } catch {
     jobsContainer.replaceChildren(
       el("p", { className: "default-note", textContent: "Could not load jobs." }),
