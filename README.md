@@ -44,9 +44,7 @@ Is this over-engineered? Yes. Does that bother the author? No. Were several seri
 
 ## Supported Sites
 
-We support [ImageBam](docs/HOSTER_IMAGEBAM.md), [ImgBox](docs/HOSTER_IMGBOX.md), [ImgBB](docs/HOSTER_IMGBB.md), [Bunkr](docs/HOSTER_BUNKR.md), [Erome](docs/HOSTER_EROME.md), [JPG6](docs/HOSTER_JPG6.md), and [GirlsReleased](docs/HOSTER_GIRLSRELEASED.md).
-
-For a complete breakdown of what we do, the bizarre CDN quirks we bypass, and how to add a site yourself if you're a glutton for punishment, see [docs/HOSTER.md](docs/HOSTER.md).
+For a complete breakdown of supported sites, the bizarre CDN quirks we bypass, and how to add a site yourself if you're a glutton for punishment, see [docs/HOSTER.md](docs/HOSTER.md).
 
 ---
 
