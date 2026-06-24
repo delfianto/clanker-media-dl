@@ -24,12 +24,7 @@ import {
 const LEGACY_JOBS_KEY = "downloadJobs";
 
 // ── In-memory cancel cache ───────────────────────────────────────────────────
-// Per-item cancel checks in runQueue used to call readJobs() (deserializing ALL
-// 101 jobs × ~100 objects) 3× per item — ~150M object ops during a 101-gallery
-// crawl. This Set replaces those reads with an O(1) lookup. Populated by
-// cancelJob/cancelAllJobs/clearAllJobs/deleteJob, cleared by resumeJob. Lost on
-// SW restart, which is fine: resumeRunningJobs() marks all "running" jobs as
-// "error" on restart, so no queue is alive to check the cache.
+// O(1) cache for job cancellation checks to avoid massive IDB deserialization overhead during crawls.
 const cancelledJobs = new Set<string>();
 
 export function isJobCancelled(jobId: string): boolean {

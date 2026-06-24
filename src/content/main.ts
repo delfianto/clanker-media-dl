@@ -51,11 +51,7 @@ const GALLERY_ADAPTERS: Record<HosterId, GalleryAdapterFn> = {
   girlsreleased: activateGalleryGirlsreleased,
 };
 
-// MAIN world, document_idle. Registered synchronously at load — isolated.ts
-// dispatches __md_config__ only after an async storage read, so this listener
-// is always in place before the event fires. Its arrival is the activation
-// signal: isolated.ts only sends it when the extension and the matched hoster
-// are both enabled.
+// Listen for activation config from isolated world (only sent if extension/hoster is enabled).
 document.addEventListener("__md_config__", (event) => {
   try {
     const config = JSON.parse((event as CustomEvent<string>).detail) as MDConfig;
