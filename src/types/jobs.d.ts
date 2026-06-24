@@ -1,6 +1,6 @@
 import type { HosterId } from "./hoster";
 
-export type DownloadJobStatus = "running" | "done" | "error";
+export type DownloadJobStatus = "running" | "done" | "error" | "canceled";
 
 export type LogLevel = "info" | "warn" | "error" | "debug";
 
