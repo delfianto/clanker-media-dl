@@ -25,6 +25,31 @@ function collectSetAnchorsFromRoot(root: Document | Element): GalleryJobItem[] {
   return items;
 }
 
+// Fetch one listing page, retrying transient failures (network "Failed to
+// fetch", 429 rate-limit, 5xx) with exponential backoff. Returns null only
+// after genuinely giving up — a non-retryable 4xx or exhausted retries.
+// Without this, a single transient blip on page N aborted ALL pagination and
+// silently truncated set discovery to whatever pages had loaded so far.
+async function fetchSetsPage(url: string, maxRetries = 3): Promise<{ sets?: unknown[] } | null> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const res = await fetch(url);
+      if (res.ok) return (await res.json()) as { sets?: unknown[] };
+      const retryable = res.status === 429 || res.status >= 500;
+      if (!retryable || attempt >= maxRetries) {
+        console.warn(`[md] GirlsReleased: API ${url} returned HTTP ${res.status}, giving up`);
+        return null;
+      }
+    } catch (err) {
+      if (attempt >= maxRetries) {
+        console.warn(`[md] GirlsReleased: API ${url} failed after ${maxRetries} retries:`, err);
+        return null;
+      }
+    }
+    await new Promise((r) => setTimeout(r, 500 * 2 ** attempt));
+  }
+}
+
 // Paginate the girlsreleased listing API to discover every set for a site (and
 // optionally a specific model), not just the first page the SPA rendered into
 // the DOM. The SPA only fetches page 1 on initial load and gates further pages
@@ -50,23 +75,8 @@ async function collectAllSetsViaApi(site: string, modelId?: string): Promise<Gal
   const MAX_PAGES = 200; // safety cap against runaway pagination
 
   for (let page = 1; page <= MAX_PAGES; page++) {
-    let data: { sets?: unknown[] };
-    try {
-      const res = await fetch(`${base}${page}`);
-      if (!res.ok) {
-        console.warn(
-          `[md] GirlsReleased: API page ${page} returned HTTP ${res.status}, stopping pagination`,
-        );
-        break;
-      }
-      data = await res.json();
-    } catch (err) {
-      console.warn(
-        `[md] GirlsReleased: failed to fetch API page ${page}, stopping pagination:`,
-        err,
-      );
-      break;
-    }
+    const data = await fetchSetsPage(`${base}${page}`);
+    if (!data) break; // unreachable even after retries — stop, but keep what we have
 
     const sets = data.sets;
     if (!Array.isArray(sets) || sets.length === 0) break;
