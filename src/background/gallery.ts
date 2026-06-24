@@ -17,6 +17,7 @@ import {
 } from "./job-store";
 import { resolveItem } from "./item-resolver";
 import { jobActivityBegin, jobActivityEnd } from "./download-ui";
+import { ensureOffscreenDocument } from "./offscreen";
 import { appendLog } from "./logger";
 import { isMediaFile, isTransientError, classifyFailure, failureLabel } from "./media-util";
 import { sanitizeFilename } from "./sanitize";
@@ -144,40 +145,7 @@ function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-let creatingOffscreen: Promise<void> | null = null;
-
-async function ensureOffscreenDocument(): Promise<void> {
-  if (await hasOffscreenDocument()) return;
-
-  if (creatingOffscreen) {
-    await creatingOffscreen;
-    return;
-  }
-
-  creatingOffscreen = (browser as any).offscreen.createDocument({
-    url: "src/offscreen/index.html",
-    reasons: ["BLOBS"],
-    justification: "Fetch and download Erome media to bypass Referer check",
-  });
-
-  try {
-    await creatingOffscreen;
-  } finally {
-    creatingOffscreen = null;
-  }
-}
-
-async function hasOffscreenDocument(): Promise<boolean> {
-  if ("getContexts" in browser.runtime) {
-    const contexts = await (browser.runtime as any).getContexts({
-      contextTypes: ["OFFSCREEN_DOCUMENT"],
-    });
-    return contexts.length > 0;
-  }
-
-  const clients = await (self as any).clients.matchAll();
-  return clients.some((c: any) => c.url.includes("offscreen/index.html"));
-}
+// Offscreen logic moved to offscreen.ts
 
 async function downloadViaOffscreen(url: string, filePath: string, jobId?: string): Promise<void> {
   await ensureOffscreenDocument();
