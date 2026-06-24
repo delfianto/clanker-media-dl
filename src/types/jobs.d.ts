@@ -1,4 +1,5 @@
 import type { HosterId } from "./hoster";
+import type { GalleryJobItem } from "./messages";
 
 export type DownloadJobStatus = "running" | "done" | "error" | "canceled";
 
@@ -32,4 +33,8 @@ export type DownloadJob = {
   status: DownloadJobStatus;
   startedAt: number;
   items?: DownloadJobItem[];
+  originalItems?: GalleryJobItem[] | undefined;
+  maxParallelImg?: number | undefined;
+  maxParallelVid?: number | undefined;
+  postedAt?: number | undefined;
 };
