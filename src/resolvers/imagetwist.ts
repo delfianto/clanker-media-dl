@@ -37,7 +37,7 @@ export const imagetwistResolver: LeafResolver = {
       throw new Error(`DEAD_LINK: imagetwist image not found — ${viewerUrl}`);
     }
 
-    const fullUrl = src.startsWith("//") ? `https:${src}` : src;
+    const fullUrl = src.startsWith("//") ? `https:${src}` : src.replace(/^http:\/\//i, "https://");
     const alt = picTag?.match(/\balt=["']([^"']*)["']/i)?.[1]?.trim();
 
     return {
