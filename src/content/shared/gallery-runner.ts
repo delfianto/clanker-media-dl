@@ -349,11 +349,16 @@ export function runGalleryAdapter(
           }),
         );
 
-        // Filter valid results and sort by postedAt descending (latest date first)
+        // Filter valid results and sort by postedAt descending (latest date first), and subfolder ascending
         const validResults = setResults.filter(
           (r): r is { req: MDGalleryStartRequest; postedAt: number } => r !== null,
         );
-        validResults.sort((a, b) => b.postedAt - a.postedAt);
+        validResults.sort((a, b) => {
+          if (b.postedAt !== a.postedAt) {
+            return b.postedAt - a.postedAt;
+          }
+          return a.req.subfolder.localeCompare(b.req.subfolder);
+        });
 
         // Post messages sequentially
         for (const res of validResults) {

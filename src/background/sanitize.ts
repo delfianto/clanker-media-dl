@@ -9,10 +9,10 @@ const CONTROL_CHARS = /[\u0000-\u001f]/g;
 
 export function sanitizeFilename(name: string): string {
   let clean = name.replace(ILLEGAL_CHARS, "_").replace(CONTROL_CHARS, "");
-  // Windows forbids leading/trailing spaces and dots
-  clean = clean.replace(/^[\s.]+|[\s.]+$/g, "");
   // Collapse consecutive underscores from multiple illegal chars
   clean = clean.replace(/_+/g, "_");
+  // Windows forbids leading/trailing spaces, dots, hyphens, and underscores
+  clean = clean.replace(/^[\s._-]+|[\s._-]+$/g, "");
   // Don't let sanitization produce an empty name
   return clean || "file";
 }
