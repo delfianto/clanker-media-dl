@@ -3,6 +3,10 @@ import type { LeafResolver } from "./types";
 export const imagevenueResolver: LeafResolver = {
   id: "imagevenue",
   matches: (url: URL) => {
+    // CDN links (e.g., cdn-images.imagevenue.com/...jpg) are direct images, not viewer pages.
+    if (url.hostname.startsWith("cdn-") || /\.(?:jpg|jpeg|png|gif|webp)$/i.test(url.pathname)) {
+      return false;
+    }
     return url.hostname === "imagevenue.com" || url.hostname.endsWith(".imagevenue.com");
   },
   resolveFromViewer: async (viewerUrl: string) => {
