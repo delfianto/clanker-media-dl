@@ -249,3 +249,64 @@ footer a {
 footer a:hover {
   color: var(--accent);
 }
+
+/* Active downloads list — toolbar surface that stands in for Chrome's
+   suppressed native download shelf during crawls. */
+.dl-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.dl-row {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+}
+
+.dl-row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.dl-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dl-count {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.dl-bar {
+  width: 100%;
+  height: 6px;
+  appearance: none;
+  border: none;
+  border-radius: 3px;
+  background: var(--surface-hover);
+  overflow: hidden;
+}
+
+.dl-bar::-webkit-progress-bar {
+  background: var(--surface-hover);
+  border-radius: 3px;
+}
+
+.dl-bar::-webkit-progress-value {
+  background: var(--accent);
+  border-radius: 3px;
+}

@@ -16,6 +16,7 @@ import {
   findDoneItem,
 } from "./job-store";
 import { resolveItem } from "./item-resolver";
+import { jobActivityBegin, jobActivityEnd } from "./download-ui";
 import { appendLog } from "./logger";
 import { isMediaFile, isTransientError } from "./media-util";
 import { sanitizeFilename } from "./sanitize";
@@ -465,6 +466,13 @@ export async function startGalleryJob(req: MDGalleryStartRequest): Promise<void>
       ? stored["skipExistingFiles"]
       : DEFAULT_SETTINGS.skipExistingFiles;
 
+  // Mark download activity active: suppresses Chrome's native download UI (which
+  // janks the browser when thousands of files download) and bumps the toolbar
+  // badge. Paired with jobActivityEnd() in the .finally below — placed here, not
+  // earlier, so a throw during setup can't leak the counter (the whole chain
+  // incl. its .finally is created synchronously from this point on).
+  jobActivityBegin();
+
   // Chain the execution of this job to serialize downloading.
   const myTurn = activeJobPromise
     .then(async () => {
@@ -516,6 +524,7 @@ export async function startGalleryJob(req: MDGalleryStartRequest): Promise<void>
     })
     .finally(() => {
       unregisterJobTab(job.jobId);
+      jobActivityEnd();
     });
 
   activeJobPromise = myTurn;

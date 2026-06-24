@@ -15,6 +15,7 @@ import type {
   MDGetJobResponse,
 } from "../types/messages";
 import { crossOriginFetchBlob } from "./fetcher";
+import { initDownloadUi } from "./download-ui";
 import { startGalleryJob, attemptDownload, registerJobTab } from "./gallery";
 import {
   listJobs,
@@ -33,22 +34,11 @@ import { getLogs, clearLogs } from "./logger";
 import { migrateJobsIfNeeded, getJobWithItems } from "./job-store";
 import { migrateLogsIfNeeded } from "./logger";
 
-// Suppress Chrome's download shelf/bubble. This is a bulk downloader: a crawl
-// fires thousands of downloads.download() calls, and Chrome re-renders its
-// download UI (the bubble auto-opens and animates) on the BROWSER UI thread for
-// every single one. That — not the service worker — is what turns the whole
-// browser into a slug during a large crawl. setUiOptions is Chrome-only and
-// requires the "downloads.ui" permission; Firefox has neither, so feature-detect.
-function suppressDownloadUi(): void {
-  const dl = browser.downloads as unknown as {
-    setUiOptions?: (opts: { enabled: boolean }) => Promise<void>;
-  };
-  if (typeof dl.setUiOptions !== "function") return;
-  dl.setUiOptions({ enabled: false }).catch((err: unknown) => {
-    console.warn("[md] could not suppress download UI:", err);
-  });
-}
-suppressDownloadUi();
+// Reset the native download UI / toolbar badge to a known-good idle state. The
+// SW suppresses Chrome's download shelf only while download jobs are running
+// (see download-ui.ts) — this recovers the case where the SW died mid-crawl
+// while the UI was suppressed.
+initDownloadUi();
 
 // Recover any jobs that were mid-flight when the SW was last terminated.
 void resumeRunningJobs();
