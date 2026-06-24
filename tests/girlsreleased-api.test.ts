@@ -127,10 +127,15 @@ describe("parseSet", () => {
 });
 
 describe("deriveGalleryName", () => {
-  it("prepends YYYY.MM.DD and dots spaces when a posted date is given", () => {
+  it("prepends YYYY.MM.DD_HH.MM.SS and dots spaces when a posted timestamp is given", () => {
     expect(deriveGalleryName("femjoy.com", "Ariel A", "Sway", TS_2020)).toBe(
-      "Femjoy/2020.01.01_Ariel.A_Sway",
+      "Femjoy/2020.01.01_00.00.00_Ariel.A_Sway",
     );
+  });
+
+  it("zero-pads the time components (UTC)", () => {
+    // 2020-01-02 03:04:05 UTC
+    expect(deriveGalleryName("x.com", "", "S", 1577934245)).toBe("X/2020.01.02_03.04.05_S");
   });
 
   it("omits the date segment when postedAt is null/absent", () => {
@@ -139,12 +144,14 @@ describe("deriveGalleryName", () => {
   });
 
   it("omits the model segment when model is empty", () => {
-    expect(deriveGalleryName("femjoy.com", "", "Sway", TS_2020)).toBe("Femjoy/2020.01.01_Sway");
+    expect(deriveGalleryName("femjoy.com", "", "Sway", TS_2020)).toBe(
+      "Femjoy/2020.01.01_00.00.00_Sway",
+    );
     expect(deriveGalleryName("femjoy.com", "", "Sway")).toBe("Femjoy/Sway");
   });
 
   it("returns just the set segment when site is empty", () => {
-    expect(deriveGalleryName("", "", "Sway", TS_2020)).toBe("2020.01.01_Sway");
+    expect(deriveGalleryName("", "", "Sway", TS_2020)).toBe("2020.01.01_00.00.00_Sway");
     expect(deriveGalleryName("", "Model", "Sway")).toBe("Model_Sway");
   });
 
