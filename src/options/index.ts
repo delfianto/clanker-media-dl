@@ -7,7 +7,7 @@ import { DEFAULT_SETTINGS } from "../settings/schema";
 import { $, clone, toast, el } from "./dom";
 import { renderPanel, renderSidebar } from "./tab-hosters";
 import { renderDownloadsSettings } from "./tab-downloads";
-import { formatJobStatus, loadHistoryTab } from "./tab-history";
+import { formatJobStatus, loadHistoryTab, setHistoryFilter } from "./tab-history";
 import { formatLogLine, loadLogsTab } from "./tab-logs";
 
 let settings: Settings;
@@ -188,6 +188,12 @@ async function init(): Promise<void> {
     void browser.runtime.sendMessage({ type: "MD_RESUME_ALL_JOBS" }).then(() => {
       void loadHistoryTab(expandedJobIds);
     });
+  });
+
+  $("history-filter").addEventListener("change", (e) => {
+    const filter = (e.target as HTMLSelectElement).value as "all" | "done" | "partial" | "running";
+    setHistoryFilter(filter);
+    void loadHistoryTab(expandedJobIds);
   });
 
   // Live messages from the SW while the Downloads tab is open.
