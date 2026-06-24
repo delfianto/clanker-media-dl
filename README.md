@@ -31,14 +31,9 @@ Is this over-engineered? Yes. Does that bother the author? No. Were several seri
 
 ## Supported Sites
 
-| Site | What it does |
-|------|-------------|
-| ImageBam | Single download button, CDN → viewer redirect, gallery batch download with UUID/mojibake filename fallback |
-| ImgBox | Same but with an 8-character path guard regex, thumbnail→full-res URL transform |
-| ImgBB | Same but slightly different DOM, anchor-href gallery strategy |
-| Bunkr | The whole beast: 21 mirror domains, `window.albumFiles` collection, viewer-page HTML extraction, CDN URL signing via `glb-apisign.cdn.cr`, "Server under maintenance" detection, `<source>`/`<video>` fallback for video pages, per-hoster CSS injection |
+We support [ImageBam](docs/HOSTER_IMAGEBAM.md), [ImgBox](docs/HOSTER_IMGBOX.md), [ImgBB](docs/HOSTER_IMGBB.md), [Bunkr](docs/HOSTER_BUNKR.md), [Erome](docs/HOSTER_EROME.md), [JPG6](docs/HOSTER_JPG6.md), and [GirlsReleased](docs/HOSTER_GIRLSRELEASED.md).
 
-If your favorite image hosting site isn't here: that's your problem, not mine.
+For a complete breakdown of what we do, the bizarre CDN quirks we bypass, and how to add a site yourself if you're a glutton for punishment, see [docs/HOSTER.md](docs/HOSTER.md).
 
 ---
 
@@ -139,70 +134,9 @@ If your feelings about LLM-assisted code are stronger than your desire to have a
 
 ## Architecture (For The Curious / Masochistic)
 
-The following is a real description of what happens when you press the download button:
+Do you want to know what actually happens when you press the download button? Do you want to learn about the horrors of Manifest V3, dual content-script world isolation, and Service Worker connection starvation? 
 
-### Single-image download
-
-```
-CDN URL hits redirector.ts (ISOLATED world, document_start)
-  → location.replace() to viewer page
-
-Viewer page loads isolated.ts (ISOLATED world, document_idle)
-  → reads settings from browser.storage.local
-  → dispatches __md_config__ CustomEvent to MAIN world
-  → listens for window.postMessage relay requests
-
-main.ts (MAIN world, document_idle)
-  → receives config via __md_config__ listener
-  → dispatches to host adapter (imagebam/imgbox/imgbb/bunkr)
-  → adapter injects button into DOM
-  → on click: posts MD_REQUEST via postMessage bridge
-
-bridge.ts (MAIN world)
-  → pending Map<id, resolve/reject>
-  → posts to window, isolated.ts picks it up
-
-isolated.ts (relay)
-  → receives MD_REQUEST
-  → browser.runtime.sendMessage MD_FETCH_BLOB to SW
-
-background/index.ts (Service Worker)
-  → fetch() with credentials:omit, 30s timeout
-  → sanitizeFilename() before browser.downloads.download()
-  → returns ArrayBuffer + contentType
-
-isolated.ts
-  → posts MD_RESPONSE back with buffer as transferable [zero-copy]
-
-downloader.ts (MAIN world)
-  → Blob from ArrayBuffer → objectURL → <a> click
-  → file saved to disk
-```
-
-### Gallery batch download
-
-```
-Gallery page loads → isolated.ts → __md_config__ → main.ts
-  → runGalleryAdapter(model, config, adapter.activateGallery)
-  → collects items (DOM strategy or model.collectAllItems)
-  → fetches pagination pages if present, de-duplicates
-  → adapter.injectGalleryButton — hoster-specific HTML, CSS, placement
-  → user clicks → triggerDownload()
-  → posts MD_GALLERY_START to ISOLATED → SW
-
-background/gallery.ts (Service Worker)
-  → partitions items: isMediaFile() → image queue + media queue
-  → runQueue(job, imageEntries, maxParallelImg)
-  → runQueue(job, mediaEntries, maxParallelVid)
-  → both run concurrently via Promise.all
-  → per item: fetchWithRetry(viewer page) → model.extractFromViewer()
-    → model.resolveUrl() (bunkr signing) → sanitizeFilename()
-    → browser.downloads.download() → onChanged listener confirms completion
-  → transient errors retried 3x with 1s/2s/4s backoff
-  → progress broadcast to options page + all tabs
-```
-
-All of this happens so you can press a button and get a JPEG. Every single layer of this is load-bearing because MV3 is what happens when a browser vendor redesigns their extension API while clearly never having talked to an extension developer. The author did not choose this architecture for fun. The author chose this architecture because every simpler path was bricked.
+[Read the Architecture Docs here.](docs/ARCHITECTURE.md) You have been warned.
 
 ---
 
@@ -219,19 +153,7 @@ All of this happens so you can press a button and get a JPEG. Every single layer
 
 ---
 
-## Adding More Sites
 
-See `AGENTS.md` for the full hoster model documentation. The short version:
-
-1. Write a `HosterModel` in `src/hosts/{id}/model.ts` — redirect rules, download config, gallery config, optional `extractFromViewer`/`resolveUrl` hooks for SW-side peculiarities
-2. Write a DOM adapter in `src/hosts/{id}/adapter.ts` — `activate()` for single-download, `activateGallery()` for gallery button injection (own HTML, CSS, placement)
-3. Add it to `src/hosts/index.ts`
-4. Wire up the manifest entries in `vite.config.ts`
-5. `bun run check && bun test && bun run build`
-
-The shared gallery runner has zero `model.id ===` checks. The SW has zero hoster-specific logic. All peculiarities live in the model and adapter. This is the way it should be. It was not always this way, and the git log bears the scars.
-
-The author may or may not ever do this. No commitments are being made here.
 
 ---
 
