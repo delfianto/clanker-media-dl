@@ -95,15 +95,15 @@ function parsePostedAt(raw: unknown): number | null {
   return secs;
 }
 
-// "YYYY.MM.DD" in UTC (deterministic regardless of the user's timezone), or ""
-// when there is no usable date.
-function formatPostedDate(postedAt: number | null): string {
+// "YYYY.MM.DD_HH.MM.SS" in UTC (deterministic regardless of the user's timezone),
+// or "" when there is no usable timestamp.
+function formatPostedTimestamp(postedAt: number | null): string {
   if (postedAt === null) return "";
   const d = new Date(postedAt * 1000);
-  const y = d.getUTCFullYear();
-  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
-  const day = String(d.getUTCDate()).padStart(2, "0");
-  return `${y}.${m}.${day}`;
+  const p = (n: number) => String(n).padStart(2, "0");
+  const date = `${d.getUTCFullYear()}.${p(d.getUTCMonth() + 1)}.${p(d.getUTCDate())}`;
+  const time = `${p(d.getUTCHours())}.${p(d.getUTCMinutes())}.${p(d.getUTCSeconds())}`;
+  return `${date}_${time}`;
 }
 
 // Collapse whitespace and path separators to dots so a value is safe as a single
@@ -116,11 +116,11 @@ function dotify(s: string): string {
     .replace(/^\.+|\.+$/g, "");
 }
 
-// Build the per-set folder path. With a posted date:
-//   "Studio/YYYY.MM.DD_Model.Name_Gallery.Name"
-// Date and model are omitted when unavailable, e.g. "Studio/Gallery.Name". The
-// date disambiguates same-model + same-title sets that would otherwise collide
-// into one folder and clobber each other.
+// Build the per-set folder path. With a posted timestamp:
+//   "Studio/YYYY.MM.DD_HH.MM.SS_Model.Name_Gallery.Name"
+// Timestamp and model are omitted when unavailable, e.g. "Studio/Gallery.Name".
+// The timestamp disambiguates same-model + same-title sets that would otherwise
+// collide into one folder and clobber each other.
 export function deriveGalleryName(
   site: string,
   model: string,
@@ -132,7 +132,7 @@ export function deriveGalleryName(
     studio = studio.charAt(0).toUpperCase() + studio.slice(1);
   }
 
-  const segment = [formatPostedDate(postedAt), dotify(model), dotify(name)]
+  const segment = [formatPostedTimestamp(postedAt), dotify(model), dotify(name)]
     .filter(Boolean)
     .join("_");
 
