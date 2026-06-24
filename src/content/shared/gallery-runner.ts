@@ -329,9 +329,7 @@ export function runGalleryAdapter(
           }),
         );
         jobItems = expandedItems;
-        console.log(
-          `[md] set expansion complete: ${expandedItems.length} items from ${jobItems.length > 0 ? "sets" : "0 sets"}`,
-        );
+        console.log(`[md] set expansion complete: ${expandedItems.length} items`);
       }
 
       btnElement.innerHTML = loadingIcon;

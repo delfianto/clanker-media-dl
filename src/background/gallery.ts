@@ -5,7 +5,9 @@ import type {
   MDJobProgressMessage,
 } from "../types/messages";
 import type { DownloadJob } from "../types/jobs";
+import type { HosterId } from "../types/hoster";
 import { crossOriginFetchText } from "./fetcher";
+import { withRetry } from "./retry";
 import { appendLog } from "./logger";
 import { getModel } from "../hosts/index";
 import { isMediaFile, isTransientError } from "./media-util";
@@ -100,30 +102,17 @@ function broadcastProgress(job: DownloadJob): void {
 // Retry transient HTTP failures (502, 503, 504, network errors) with backoff.
 // Both the viewer page fetch and hoster-specific resolveUrl hooks (e.g. bunkr's
 // sign API) can hit these under load.
-async function fetchWithRetry(
+function fetchWithRetry(
   url: string,
   jobId: string,
   label: string,
   maxRetries = 3,
 ): Promise<{ text: string }> {
-  let lastErr: unknown;
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    if (attempt > 0) {
-      const backoff = 1000 * 2 ** (attempt - 1);
-      void appendLog("debug", `Retry ${attempt}/${maxRetries} for ${label} in ${backoff}ms`, jobId);
-      await sleep(backoff);
-    }
-    try {
-      return await crossOriginFetchText(url);
-    } catch (err) {
-      lastErr = err;
-      const msg = String(err);
-      const transient = /HTTP\s+5\d\d/.test(msg) || /Failed to fetch|NetworkError|abort/i.test(msg);
-      if (attempt < maxRetries && transient) continue;
-      break;
-    }
-  }
-  throw lastErr;
+  return withRetry(() => crossOriginFetchText(url), {
+    maxRetries,
+    onRetry: (attempt, backoff) =>
+      void appendLog("debug", `Retry ${attempt}/${maxRetries} for ${label} in ${backoff}ms`, jobId),
+  });
 }
 
 // Resolve a gallery item to a downloadable URL. The flow:
@@ -135,15 +124,28 @@ async function fetchWithRetry(
 //   5. Otherwise, use the item's regex extractor (generic fallback).
 //   6. If the model provides resolveUrl, call it (e.g. bunkr's sign API).
 //   7. Otherwise, return the raw URL directly.
-async function resolveItem(item: GalleryJobItem, jobId: string, hosterId: string): Promise<string> {
+async function resolveItem(
+  item: GalleryJobItem,
+  jobId: string,
+  hosterId: HosterId,
+): Promise<string> {
   if (item.kind === "resolved") return item.imageUrl;
 
-  const model = getModel(hosterId as never);
+  const model = getModel(hosterId);
   const gc = model?.galleryConfig;
 
-  // Self-resolving hosts own their fetching — no wasted framework GET.
+  // Self-resolving hosts own their fetching — no wasted framework GET. Their
+  // fetches bypass fetchWithRetry, so apply the same transient-retry policy here.
   if (gc?.resolveFromViewer) {
-    const resolved = await gc.resolveFromViewer(item.viewerUrl);
+    const resolveFromViewer = gc.resolveFromViewer;
+    const resolved = await withRetry(() => resolveFromViewer(item.viewerUrl), {
+      onRetry: (attempt, backoff) =>
+        void appendLog(
+          "debug",
+          `Retry ${attempt} for resolving ${item.viewerUrl} in ${backoff}ms`,
+          jobId,
+        ),
+    });
     if (resolved.filename) {
       item.filename = resolved.filename;
     }
@@ -187,7 +189,16 @@ async function resolveItem(item: GalleryJobItem, jobId: string, hosterId: string
       throw new Error(`extraction failed prior to resolveUrl for ${item.viewerUrl}`);
     }
     void appendLog("debug", `Resolving URL: ${rawUrl}`, jobId);
-    const resolved = await gc.resolveUrl(rawUrl, item.viewerUrl);
+    const resolveUrlHook = gc.resolveUrl;
+    const extractedUrl = rawUrl;
+    const resolved = await withRetry(() => resolveUrlHook(extractedUrl, item.viewerUrl), {
+      onRetry: (attempt, backoff) =>
+        void appendLog(
+          "debug",
+          `Retry ${attempt} for resolving ${extractedUrl} in ${backoff}ms`,
+          jobId,
+        ),
+    });
     if (typeof resolved === "string") {
       return resolved;
     }
