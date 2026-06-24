@@ -138,7 +138,18 @@ async function collectGirlsreleasedItems(root?: Document | Element): Promise<Gal
     // siteMatch[1] is always present on a successful match (the regex requires
     // at least one non-slash char), but noUncheckedIndexedAccess types it as
     // string | undefined — guard to satisfy the type and stay honest.
-    if (site) return collectAllSetsViaApi(site, modelId);
+    if (site) {
+      const items = await collectAllSetsViaApi(site, modelId);
+      if (items.length > 0) {
+        return items;
+      }
+
+      // If the API returns nothing, it may be a token-gated site and our token
+      // extraction failed (e.g., token name changed in local storage).
+      // Fallback to scraping the DOM so the user at least gets page 1's sets.
+      console.warn(`[md] API returned 0 sets for ${site}, falling back to DOM scraping`);
+      return collectSetAnchorsFromRoot(document);
+    }
   }
 
   // Direct /set/NNN page — emit a single self-referential item to trigger set
