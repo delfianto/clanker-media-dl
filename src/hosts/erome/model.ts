@@ -95,6 +95,12 @@ export const eromeModel: HosterModel = {
     uiMode: "button-overlay",
   },
   defaultCssOverrides: "",
+  hostPermissions: ["https://*.erome.com/*"],
+  // Erome's CDN rejects media requests without a Referer from erome.com.
+  // The SW registers this as a declarativeNetRequest rule at startup.
+  headerRules: [
+    { urlFilter: "*://*.erome.com/*", header: "Referer", value: "https://www.erome.com/" },
+  ],
   galleryConfig: {
     galleryMatches: ["https://*.erome.com/a/*"],
     albumNameSelector: "h1.album-title-page",
@@ -105,8 +111,12 @@ export const eromeModel: HosterModel = {
       imageSelector: ".media-group img.img-front",
     },
     collectAllItems: collectEromeItems,
+    // Erome's CDN checks the Referer header — media downloads must go through
+    // the offscreen document to bypass it. The SW checks this flag instead of
+    // hardcoding the hoster's domain.
+    offscreenForMediaFiles: true,
   },
-  getGalleryName: (doc: Document) => {
+  getGalleryName: async (doc: Document): Promise<string | null> => {
     const h1 = doc.querySelector("h1.album-title-page");
     return h1?.textContent?.trim() ?? null;
   },

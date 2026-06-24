@@ -91,7 +91,7 @@ describe("Erome Hoster Model", () => {
   });
 
   describe("getGalleryName", () => {
-    it("extracts the gallery name from h1", () => {
+    it("extracts the gallery name from h1", async () => {
       const mockDoc = {
         querySelector: (selector: string) => {
           if (selector === "h1.album-title-page") {
@@ -101,16 +101,16 @@ describe("Erome Hoster Model", () => {
         },
       };
 
-      const name = eromeModel.getGalleryName!(mockDoc as unknown as Document);
+      const name = await eromeModel.getGalleryName!(mockDoc as unknown as Document);
       expect(name).toBe("My Awesome Erome Gallery");
     });
 
-    it("returns null if h1 is missing", () => {
+    it("returns null if h1 is missing", async () => {
       const mockDoc = {
         querySelector: () => null,
       };
 
-      const name = eromeModel.getGalleryName!(mockDoc as unknown as Document);
+      const name = await eromeModel.getGalleryName!(mockDoc as unknown as Document);
       expect(name).toBeNull();
     });
   });

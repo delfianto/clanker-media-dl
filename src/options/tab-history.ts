@@ -4,6 +4,13 @@ import type { MDListJobsResponse } from "../types/messages";
 import { $, el } from "./dom";
 
 export function formatJobStatus(job: DownloadJob): string {
+  if (job.isCrawl) {
+    if (job.status === "running") return `Crawling ${job.completedCount} / ${job.totalCount} sets`;
+    if (job.status === "done") return `Crawled ${job.totalCount} sets`;
+    if (job.status === "canceled")
+      return `Stopped — crawled ${job.completedCount} / ${job.totalCount} sets`;
+    return `Crawl — ${job.failedCount} sets failed`;
+  }
   if (job.status === "running") return `${job.completedCount} / ${job.totalCount}`;
   if (job.status === "done") {
     return job.failedCount > 0
@@ -128,7 +135,12 @@ export function renderJobCard(
     { className: isExpanded ? "job-card expanded" : "job-card", id: `job-${job.jobId}` },
     [
       el("div", { className: "job-header" }, [
-        el("span", { className: "job-title", textContent: job.subfolder || job.hosterId }),
+        el("span", {
+          className: "job-title",
+          textContent: job.isCrawl
+            ? `⏳ Crawl — ${job.subfolder || job.hosterId}`
+            : job.subfolder || job.hosterId,
+        }),
         headerRight,
       ]),
       progress,

@@ -21,7 +21,7 @@ export const imagebamModel: HosterModel = {
   id: "imagebam",
   displayName: "ImageBam",
   viewerMatches: ["https://www.imagebam.com/image/*", "https://www.imagebam.com/view/*"],
-  cdnMatches: ["https://thumbs*.imagebam.com/*", "https://images*.imagebam.com/*"],
+  cdnMatches: ["https://*.imagebam.com/*"],
   defaultRedirectRules: [
     {
       id: "imagebam-new",
@@ -47,6 +47,14 @@ export const imagebamModel: HosterModel = {
     uiMode: "inline-after",
   },
   defaultCssOverrides: "",
+  onPageEnter: () => {
+    // ImageBam shows an NSFW interstitial without this cookie. Seed it so
+    // viewer/gallery pages load the media directly.
+    if (!document.cookie.includes("nsfw_inter=1")) {
+      document.cookie = "nsfw_inter=1; path=/; max-age=21600";
+    }
+  },
+  hostPermissions: ["https://*.imagebam.com/*"],
   galleryConfig: {
     // Imagebam gallery pages share /view/* with single-image viewer pages.
     // viewerIndicator tells isolated.ts: if img.main-image is ABSENT → gallery page.
@@ -64,18 +72,35 @@ export const imagebamModel: HosterModel = {
     },
     isBizarreName,
   },
-  getGalleryName: (doc: Document) => {
+  getGalleryName: async (doc: Document): Promise<string | null> => {
     const galleryNameEl = doc.querySelector("#gallery-name");
     if (galleryNameEl?.textContent) {
       return galleryNameEl.textContent.trim();
     }
+    // On a viewer page, the gallery name isn't rendered — but a "Back to
+    // gallery" link points to the gallery page. Fetch it and extract the
+    // name from there. This keeps the URL-fetch logic inside the model
+    // (it was previously inlined into the shared downloader.ts).
     const backLink = Array.from(doc.querySelectorAll("a")).find(
       (a) => a.textContent?.includes("Back to gallery") || !!a.querySelector(".fa-reply"),
     );
     if (backLink) {
       const href = backLink.getAttribute("href");
       if (href) {
-        return new URL(href, doc.baseURI || location.href).href;
+        const url = new URL(href, doc.baseURI || location.href).href;
+        try {
+          const res = await fetch(url);
+          if (res.ok) {
+            const text = await res.text();
+            const fetchedDoc = new DOMParser().parseFromString(text, "text/html");
+            const name = fetchedDoc.querySelector("#gallery-name")?.textContent?.trim();
+            if (name) return name;
+          }
+        } catch (e) {
+          console.error("[md] failed to fetch gallery name:", e);
+        }
+        // Fall back to the URL slug if the fetch or parse failed.
+        return url.split("/").at(-1) || null;
       }
     }
     return null;

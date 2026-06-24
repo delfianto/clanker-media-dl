@@ -3,7 +3,8 @@
 // HosterId is defined here (the primitive) and re-exported from global.d.ts so
 // settings code can import it from either place.
 
-import type { GalleryJobItem } from "./messages";
+import type { GalleryJobItem, MDGalleryStartRequest } from "./messages";
+import type { MDConfig } from "./global";
 
 export type HosterId =
   | "imagebam"
@@ -78,6 +79,41 @@ export type ResolveUrl = (
 // sole authority. Mutually exclusive with extractFromViewer in practice.
 export type ResolveFromViewer = (viewerUrl: string) => Promise<{ url: string; filename?: string }>;
 
+// ── Crawl phase (aggregator hosters like girlsreleased) ──────────────────────
+// A crawl phase resolves a listing page's items into per-sub-gallery download
+// jobs BEFORE any download starts. Each item on the listing (e.g. a /set/ link)
+// is "crawled" — fetched, parsed, and expanded into a concrete set of download
+// items — and the resulting download jobs are posted only after the entire crawl
+// completes (or is aborted). This keeps all hoster-specific crawl knowledge
+// (API endpoints, response parsing, thumbnail transforms, sort order) inside the
+// model, not in the shared gallery runner.
+
+export type CrawlResult = {
+  req: MDGalleryStartRequest;
+  postedAt: number;
+};
+
+export type CrawlConfig = {
+  // Whether a collected item is a crawl item (requires expansion into sub-items).
+  // Replaces the old `item.viewerUrl.includes("/set/")` check that was inlined
+  // into the shared gallery runner.
+  isCrawlItem: (item: GalleryJobItem) => boolean;
+  // Expand one crawl item into a download-job request (or null if it yields
+  // nothing). Runs in MAIN world. The shared runner handles the crawl job
+  // lifecycle (progress, cancellation, concurrency); this hook owns all
+  // hoster-specific resolution (API fetch, parse, thumbnail transform, naming).
+  crawlItem: (
+    item: GalleryJobItem,
+    model: HosterModel,
+    config: MDConfig,
+  ) => Promise<CrawlResult | null>;
+  // Optional sort for the crawl results before posting download jobs (e.g. by
+  // posted date descending). Preserves insertion order when absent.
+  sortCrawlResults?: (a: CrawlResult, b: CrawlResult) => number;
+  // Max concurrent crawl-item fetches. Defaults to 8 in the shared runner.
+  crawlConcurrency?: number;
+};
+
 export type GalleryConfig = {
   galleryMatches: string[]; // manifest content_scripts matches for gallery pages
   // imagebam only: selector PRESENT on viewer pages, ABSENT on gallery pages.
@@ -105,6 +141,14 @@ export type GalleryConfig = {
   isBizarreName?: (name: string) => boolean;
   pathGuard?: string; // runtime regex on location.pathname before activating (jpg6 / user pages)
   waitForSelector?: string; // wait for this selector to exist in DOM before running gallery adapter
+  // Crawl phase for aggregator hosters (girlsreleased). When present and the
+  // collected items include crawl items, the shared runner enters a visible,
+  // cancellable crawl phase before posting download jobs. See CrawlConfig above.
+  crawlConfig?: CrawlConfig;
+  // When true, media (video/audio) downloads for this hoster go through the
+  // offscreen document to bypass Referer checks (erome). The SW checks this
+  // flag instead of hardcoding the hoster's domain.
+  offscreenForMediaFiles?: boolean;
 };
 
 export type HosterModel = {
@@ -116,5 +160,29 @@ export type HosterModel = {
   downloadConfig: DownloadConfig;
   defaultCssOverrides: string; // empty string when none
   galleryConfig?: GalleryConfig; // undefined = no gallery support for this hoster
-  getGalleryName?: (doc: Document) => string | null; // Abstraction to detect gallery name/ID from page DOM
+  // Async because some hosters (imagebam) need to fetch a secondary page to
+  // resolve the album name. Callers must await the result.
+  getGalleryName?: (doc: Document) => Promise<string | null>;
+  // Called once from the ISOLATED world when a hoster's page is entered and the
+  // extension + hoster are enabled. Owns per-hoster side effects like cookie
+  // seeding (imagebam's nsfw_inter cookie). Replaces `model.id ===` checks.
+  onPageEnter?: () => void;
+  // Extra host_permissions the SW needs for this hoster beyond what
+  // viewerMatches + galleryMatches + cdnMatches imply (e.g. CDN domains for
+  // fetch, sign-API endpoints). Used by vite.config.ts to build the manifest.
+  hostPermissions?: string[];
+  // declarativeNetRequest header-modification rules the SW registers on startup.
+  // Each rule gets a stable numeric ID derived from the model's position in
+  // ALL_MODELS. Used by erome to set the Referer header its CDN requires.
+  // Replaces hardcoded per-hoster DNR logic in the SW bootstrap.
+  headerRules?: HeaderRule[];
+};
+
+// A declarativeNetRequest header modification. The SW translates this into a
+// dynamic rule at startup. urlFilter follows chrome.declarativeNetRequest
+// syntax (e.g. "*://*.erome.com/*").
+export type HeaderRule = {
+  urlFilter: string;
+  header: string;
+  value: string;
 };

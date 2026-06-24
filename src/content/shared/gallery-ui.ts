@@ -67,7 +67,7 @@ export function wireGalleryButton(
     const data = event.data as Record<string, unknown>;
     if (data["type"] === "MD_JOB_PROGRESS" && data["jobId"] === activeJobId) {
       const status = data["status"];
-      if (status === "done" || status === "error") {
+      if (status === "done" || status === "error" || status === "canceled") {
         btn.innerHTML = doneIcon;
         btn.classList.remove("loading");
         activeJobId = "";

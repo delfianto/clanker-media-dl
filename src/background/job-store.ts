@@ -68,6 +68,17 @@ export async function deleteJob(jobId: string): Promise<void> {
   });
 }
 
+// Cancel every running job, then wipe the whole job list. Goes through the
+// storage queue so it can't race with an in-flight upsertJob that would
+// otherwise re-write the stale list back (the "I cleared it and it repopulated"
+// bug). The options page MUST use this instead of writing downloadJobs: [] raw.
+export async function clearAllJobs(): Promise<void> {
+  await cancelAllJobs();
+  return runInStorageQueue(async () => {
+    await browser.storage.local.set({ [JOBS_KEY]: [] });
+  });
+}
+
 export async function cancelJob(jobId: string): Promise<void> {
   return runInStorageQueue(async () => {
     const jobs = await readJobs();

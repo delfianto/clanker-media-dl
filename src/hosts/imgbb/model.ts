@@ -49,6 +49,7 @@ export const imgbbModel: HosterModel = {
     uiMode: "button-overlay",
   },
   defaultCssOverrides: "",
+  hostPermissions: ["https://ibb.co/*", "https://*.ibb.co/*", "https://*.imgbb.com/*"],
   galleryConfig: {
     galleryMatches: ["https://ibb.co/album/*"],
     albumNameSelector: "h1",
@@ -60,7 +61,7 @@ export const imgbbModel: HosterModel = {
     },
     collectAllItems: collectImgbbItems,
   },
-  getGalleryName: (doc: Document) => {
+  getGalleryName: async (doc: Document): Promise<string | null> => {
     // imgbb's <h1> truncates the album name with a literal "..." suffix (CSS
     // text-overflow). The full name is in the breadcrumb <a data-text="album-name">.
     const breadcrumb = doc.querySelector<HTMLAnchorElement>('a[data-text="album-name"]');

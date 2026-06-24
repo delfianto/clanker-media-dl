@@ -1,36 +1,34 @@
 import type { MDConfig } from "../../types/global";
 import type { HosterModel } from "../../types/hoster";
+import type { CrawlResult } from "../../types/hoster";
 import type { GalleryJobItem, MDGalleryStartRequest } from "../../types/messages";
 import type { GalleryCtx } from "./gallery-ui";
-import { thumbnailToFull } from "../../resolvers/index";
-import {
-  parseSet,
-  deriveGalleryName,
-  compareSetsByDateAndSubfolder,
-} from "../../hosts/girlsreleased/api";
-import { sanitizeFilename } from "../../background/sanitize";
 import {
   collectThumbnailTransform,
   collectAnchorHref,
   collectResolveViewer,
   collectPageUrls,
   fetchAdditionalItems,
+  mapWithConcurrency,
+  buildSubfolder,
 } from "./collector";
 
-function buildSubfolder(albumName: string, config: MDConfig): string {
-  if (!config.autoFolderPerAlbum) return config.downloadDirectory;
-  const safeName = albumName
-    .split("/")
-    .map((seg) => sanitizeFilename(seg))
-    .join("/");
-  return config.downloadDirectory ? `${config.downloadDirectory}/${safeName}` : safeName;
+// Default concurrency for crawl-item fetches. Individual hosters can override
+// via crawlConfig.crawlConcurrency.
+const DEFAULT_CRAWL_CONCURRENCY = 8;
+
+function crawlLabel(resolved: number, failed: number, total: number): string {
+  const suffix = failed > 0 ? ` (${failed} failed)` : "";
+  return `<span class="btn-icon" style="margin-right:6px;font-size:16px;">⏳</span> <span class="btn-text">Crawling ${resolved}/${total}…${suffix}</span>`;
 }
 
 // ── Main entry ───────────────────────────────────────────────────────────────
 
 // Each hoster's adapter exports an activateGallery function that owns its
 // button HTML, placement, and progress wiring. The shared runner collects
-// items, handles pagination, and dispatches to the adapter.
+// items, handles pagination, and dispatches to the adapter. It has ZERO
+// knowledge of any specific hoster — all hoster-specific logic lives in the
+// model's hooks (collectAllItems, crawlConfig, extractFromViewer, etc.).
 export type GalleryAdapterFn = (model: HosterModel, ctx: GalleryCtx) => void;
 
 let activeInterval: any = null;
@@ -59,13 +57,13 @@ export function runGalleryAdapter(
   document.querySelectorAll("[class*='gallery-btn']").forEach((el) => el.remove());
   document.querySelectorAll(".md-gallery-btn-wrap").forEach((el) => el.remove());
 
-  function run() {
+  async function run(): Promise<void> {
     console.log("[md] runGalleryAdapter: run() triggered");
     const albumIdMatch = new RegExp(gc!.albumIdFromPath).exec(location.pathname);
     const albumId = albumIdMatch?.[1] ?? location.pathname.split("/").at(-1) ?? "album";
 
     const albumName = model.getGalleryName
-      ? (model.getGalleryName(document) ?? albumId)
+      ? ((await model.getGalleryName(document)) ?? albumId)
       : (document.querySelector(gc!.albumNameSelector)?.textContent?.trim() ?? albumId);
 
     // Prefer the model's custom collector (e.g. Bunkr reads window.albumFiles for
@@ -121,102 +119,124 @@ export function runGalleryAdapter(
         });
       }
 
-      // If we are crawling a listing/site page (represented by items with /set/ viewer URLs),
-      // fetch each set page's API data in parallel and extract its real items.
-      const hasSets = jobItems.some(
-        (item) => item.kind === "resolve-viewer" && item.viewerUrl.includes("/set/"),
-      );
-      if (hasSets) {
-        btnElement.innerHTML = loadingIcon;
-        let lastJobId = "";
+      // ── Crawl phase (aggregator hosters only) ───────────────────────────
+      // When the model defines crawlConfig AND the collected items include
+      // crawl items, enter a visible + cancellable crawl phase. Each crawl item
+      // is expanded via the model's crawlItem hook (which owns all hoster-
+      // specific resolution — API endpoints, parsing, thumbnail transforms,
+      // naming, sorting). Only after the crawl completes un-aborted do we post
+      // the per-set download jobs. The shared runner owns only the job
+      // lifecycle (progress, cancellation, concurrency) — it knows nothing
+      // about which hoster or what API is being crawled.
+      const crawlConfig = gc!.crawlConfig;
+      if (crawlConfig) {
+        const crawlItems = jobItems.filter(crawlConfig.isCrawlItem);
+        if (crawlItems.length > 0) {
+          const crawlId = crypto.randomUUID();
+          const setCount = crawlItems.length;
+          const controller = new AbortController();
+          let crawlCancelled = false;
+          let resolvedCount = 0;
+          let failedCount = 0;
 
-        // Fetch all sets' API data in parallel
-        const setResults = await Promise.all(
-          jobItems.map(async (item) => {
-            if (item.kind === "resolve-viewer" && item.viewerUrl.includes("/set/")) {
-              try {
-                const setIdMatch = /\/set\/(\d+)/.exec(item.viewerUrl);
-                const setId = setIdMatch?.[1];
-                if (!setId) return null;
-
-                const res = await fetch(`/api/0.2/set/${setId}`);
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                const data = await res.json();
-
-                const parsed = parseSet(data);
-                if (!parsed) return null;
-
-                const detectedSetName = deriveGalleryName(
-                  parsed.site,
-                  parsed.model,
-                  parsed.name,
-                  parsed.postedAt,
-                );
-                const setSubfolder = detectedSetName ? buildSubfolder(detectedSetName, config) : "";
-
-                const setItems: GalleryJobItem[] = [];
-                for (const file of parsed.files) {
-                  const fullUrl = thumbnailToFull(file.thumbnailUrl);
-                  if (fullUrl) {
-                    setItems.push({
-                      kind: "resolved",
-                      imageUrl: fullUrl,
-                      filename: file.filename,
-                      subfolder: setSubfolder,
-                    });
-                  } else {
-                    setItems.push({
-                      kind: "resolve-viewer",
-                      viewerUrl: file.viewerUrl,
-                      filename: file.filename,
-                      subfolder: setSubfolder,
-                    });
-                  }
-                }
-
-                if (setItems.length > 0) {
-                  const setJobId = crypto.randomUUID();
-                  const req: MDGalleryStartRequest = {
-                    type: "MD_GALLERY_START",
-                    jobId: setJobId,
-                    hosterId: model.id,
-                    subfolder: setSubfolder,
-                    items: setItems,
-                    maxParallelImg: config.maxParallelImg,
-                    maxParallelVid: config.maxParallelVid,
-                    postedAt: parsed.postedAt ?? undefined,
-                  };
-                  return { req, postedAt: parsed.postedAt ?? 0 };
-                }
-              } catch (err) {
-                console.error(`[md] failed to crawl set ${item.viewerUrl}:`, err);
-              }
+          // Crawl cancellation arrives as an MD_JOB_PROGRESS with our crawlId +
+          // status "canceled" (SW broadcast when the user hits Stop on the crawl
+          // card or Stop All). The ISOLATED world forwards it to MAIN, so we can
+          // abort in-flight fetches and suppress the download burst.
+          const crawlCancelListener = (event: MessageEvent): void => {
+            if (event.source !== window) return;
+            const d = event.data as Record<string, unknown>;
+            if (
+              d["type"] === "MD_JOB_PROGRESS" &&
+              d["jobId"] === crawlId &&
+              d["status"] === "canceled"
+            ) {
+              crawlCancelled = true;
+              controller.abort();
             }
-            return null;
-          }),
-        );
+          };
+          window.addEventListener("message", crawlCancelListener);
 
-        // Filter valid results and sort by postedAt descending (latest date first), and subfolder ascending
-        const validResults = setResults.filter(
-          (r): r is { req: MDGalleryStartRequest; postedAt: number } => r !== null,
-        );
-        validResults.sort((a, b) => {
-          return compareSetsByDateAndSubfolder(
-            { postedAt: a.postedAt, subfolder: a.req.subfolder },
-            { postedAt: b.postedAt, subfolder: b.req.subfolder },
+          btnElement.innerHTML = crawlLabel(0, 0, setCount);
+          window.postMessage(
+            {
+              type: "MD_CRAWL_START",
+              crawlId,
+              hosterId: model.id,
+              albumName,
+              setCount,
+            },
+            "*",
           );
-        });
 
-        // Post messages sequentially
-        for (const res of validResults) {
-          window.postMessage(res.req, "*");
-          lastJobId = res.req.jobId;
+          const crawlResults = await mapWithConcurrency(
+            crawlItems,
+            crawlConfig.crawlConcurrency ?? DEFAULT_CRAWL_CONCURRENCY,
+            controller.signal,
+            async (item) => {
+              try {
+                const result = await crawlConfig.crawlItem(item, model, config);
+                if (result) {
+                  resolvedCount++;
+                }
+                return result;
+              } catch (err) {
+                if (!controller.signal.aborted) {
+                  failedCount++;
+                  const label = item.kind === "resolve-viewer" ? item.viewerUrl : item.imageUrl;
+                  console.error(`[md] failed to crawl ${label}:`, err);
+                }
+                return null;
+              } finally {
+                if (!controller.signal.aborted) {
+                  window.postMessage(
+                    {
+                      type: "MD_CRAWL_PROGRESS",
+                      crawlId,
+                      resolvedCount,
+                      failedCount,
+                      setCount,
+                    },
+                    "*",
+                  );
+                  btnElement.innerHTML = crawlLabel(resolvedCount, failedCount, setCount);
+                }
+              }
+            },
+          );
+
+          window.removeEventListener("message", crawlCancelListener);
+
+          const aborted = crawlCancelled || controller.signal.aborted;
+          window.postMessage({ type: "MD_CRAWL_DONE", crawlId, aborted }, "*");
+
+          if (aborted) {
+            btnElement.innerHTML = doneIcon;
+            btnElement.classList.remove("loading");
+            return "";
+          }
+
+          // Crawl complete — build the download job list and post it. The
+          // model's sortCrawlResults hook controls ordering (e.g. by date);
+          // insertion order is preserved when absent.
+          const validResults = crawlResults.filter((r): r is CrawlResult => r !== null);
+          if (crawlConfig.sortCrawlResults) {
+            validResults.sort(crawlConfig.sortCrawlResults);
+          }
+
+          for (const res of validResults) {
+            window.postMessage(res.req, "*");
+          }
+
+          btnElement.innerHTML = doneIcon;
+          // Return the crawl ID so the button resets when the crawl job
+          // completes (not when every download finishes — the downloads run
+          // in the background and are tracked in the History tab).
+          return crawlId;
         }
-
-        btnElement.innerHTML = doneIcon;
-        return lastJobId;
       }
 
+      // ── Simple gallery (no crawl phase) ─────────────────────────────────
       btnElement.innerHTML = loadingIcon;
 
       const jobId = crypto.randomUUID();
@@ -244,7 +264,7 @@ export function runGalleryAdapter(
       if (document.querySelector(selector)) {
         clearInterval(activeInterval);
         activeInterval = null;
-        run();
+        void run();
       } else {
         elapsed += 250;
         if (elapsed >= 10000) {
@@ -255,6 +275,6 @@ export function runGalleryAdapter(
       }
     }, 250);
   } else {
-    run();
+    void run();
   }
 }

@@ -113,6 +113,41 @@ export type MDResumeAllJobsRequest = {
   type: "MD_RESUME_ALL_JOBS";
 };
 
+// Options page → SW: wipe all job history. Cancels any running jobs first, then
+// clears storage — all through runInStorageQueue so it can't race with an
+// in-flight upsertJob that would otherwise write the stale list back.
+export type MDClearJobsRequest = {
+  type: "MD_CLEAR_JOBS";
+};
+
+// ── Crawl phase (girlsreleased listing → per-set resolution) ─────────────────
+// MAIN → ISOLATED → SW. The crawl is a tracked, visible, cancellable job so the
+// user sees "Crawling 12/154 sets…" in the Downloads tab BEFORE any download
+// starts. Only when the crawl completes (and wasn't cancelled) does the MAIN
+// world post the MD_GALLERY_START burst for each resolved set.
+
+export type MDCrawlStartRequest = {
+  type: "MD_CRAWL_START";
+  crawlId: string;
+  hosterId: HosterId;
+  albumName: string;
+  setCount: number;
+};
+
+export type MDCrawlProgressRequest = {
+  type: "MD_CRAWL_PROGRESS";
+  crawlId: string;
+  resolvedCount: number;
+  failedCount: number;
+  setCount: number;
+};
+
+export type MDCrawlDoneRequest = {
+  type: "MD_CRAWL_DONE";
+  crawlId: string;
+  aborted: boolean;
+};
+
 // SW → options page: a single log entry to append live in the Logs tab.
 export type MDLogMessage = { type: "MD_LOG"; entry: DownloadLog };
 

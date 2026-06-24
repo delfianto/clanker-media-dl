@@ -189,7 +189,7 @@ describe("GirlsReleased Hoster Model", () => {
   });
 
   describe("getGalleryName", () => {
-    it("extracts and normalizes site name and set title", () => {
+    it("extracts and normalizes site name and set title", async () => {
       const mockSiteAnchor = {
         textContent: "  femjoy.com  ",
         getAttribute: (attr: string) => {
@@ -225,11 +225,11 @@ describe("GirlsReleased Hoster Model", () => {
         },
       };
 
-      const name = girlsreleasedModel.getGalleryName!(mockDoc as unknown as Document);
+      const name = await girlsreleasedModel.getGalleryName!(mockDoc as unknown as Document);
       expect(name).toBe("Femjoy/Ariel.A_Sway");
     });
 
-    it("falls back to only the set title if site is not found", () => {
+    it("falls back to only the set title if site is not found", async () => {
       const mockH1 = {
         textContent: "  Ariel A - Sway  ",
         getAttribute: () => null,
@@ -244,7 +244,7 @@ describe("GirlsReleased Hoster Model", () => {
         },
       };
 
-      const name = girlsreleasedModel.getGalleryName!(mockDoc as unknown as Document);
+      const name = await girlsreleasedModel.getGalleryName!(mockDoc as unknown as Document);
       expect(name).toBe("Ariel.A.-.Sway");
     });
   });

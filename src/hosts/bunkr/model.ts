@@ -170,6 +170,11 @@ export const bunkrModel: HosterModel = {
     uiMode: "button-overlay",
   },
   defaultCssOverrides: "",
+  hostPermissions: [
+    ...BUNKR_DOMAINS.map((d) => `https://${d}/*`),
+    "https://*.cdn.cr/*", // sign API
+    "https://*.cuckcapital.cr/*", // related CDN
+  ],
   galleryConfig: {
     galleryMatches: BUNKR_DOMAINS.map((d) => `https://${d}/a/*`),
     albumNameSelector: "h1",

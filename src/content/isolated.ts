@@ -101,6 +101,15 @@ function onMainMessage(event: MessageEvent): void {
   if (type === "MD_GALLERY_START") {
     // Fire-and-forget: no response needed in MAIN world; SW handles progress.
     void browser.runtime.sendMessage(data as unknown as MDGalleryStartRequest).catch(() => {});
+    return;
+  }
+
+  // Crawl-phase relays (MAIN → SW, fire-and-forget). The SW owns the crawl job
+  // lifecycle; progress flows back to MAIN via the MD_JOB_PROGRESS forwarder
+  // below, which the gallery-runner listens to for cancellation + button text.
+  if (type === "MD_CRAWL_START" || type === "MD_CRAWL_PROGRESS" || type === "MD_CRAWL_DONE") {
+    void browser.runtime.sendMessage(data).catch(() => {});
+    return;
   }
 }
 
@@ -175,11 +184,7 @@ async function init(): Promise<void> {
     const override = settings.hosters[model.id];
     if (!override?.enabled) return;
 
-    if (model.id === "imagebam") {
-      if (!document.cookie.includes("nsfw_inter=1")) {
-        document.cookie = "nsfw_inter=1; path=/; max-age=21600";
-      }
-    }
+    model.onPageEnter?.();
 
     if (pageType === "viewer" && override.cssOverrides) injectCss(override.cssOverrides);
 

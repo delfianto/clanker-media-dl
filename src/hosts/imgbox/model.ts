@@ -4,7 +4,7 @@ export const imgboxModel: HosterModel = {
   id: "imgbox",
   displayName: "ImgBox",
   viewerMatches: ["https://imgbox.com/*"],
-  cdnMatches: ["https://thumbs*.imgbox.com/*", "https://images*.imgbox.com/*"],
+  cdnMatches: ["https://*.imgbox.com/*"],
   defaultRedirectRules: [
     {
       id: "imgbox-main",
@@ -23,6 +23,7 @@ export const imgboxModel: HosterModel = {
     pathGuard: "^/[a-zA-Z0-9]{8}$",
   },
   defaultCssOverrides: "",
+  hostPermissions: ["https://imgbox.com/*", "https://*.imgbox.com/*"],
   galleryConfig: {
     galleryMatches: ["https://imgbox.com/g/*"],
     albumNameSelector: "h1",
@@ -36,7 +37,7 @@ export const imgboxModel: HosterModel = {
         thumb.replace(/thumbs(\d*)\.imgbox\.com/, "images$1.imgbox.com").replace(/_[bt]\./, "_o."),
     },
   },
-  getGalleryName: (doc: Document) => {
+  getGalleryName: async (doc: Document): Promise<string | null> => {
     const h1 = doc.querySelector("h1");
     if (!h1) return null;
     const textNodes = Array.from(h1.childNodes)

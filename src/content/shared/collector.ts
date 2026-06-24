@@ -1,5 +1,7 @@
 import type { GalleryConfig } from "../../types/hoster";
 import type { GalleryJobItem } from "../../types/messages";
+import type { MDConfig } from "../../types/global";
+import { sanitizeFilename } from "../../background/sanitize";
 
 export function basenameFromUrl(url: string): string {
   try {
@@ -8,6 +10,20 @@ export function basenameFromUrl(url: string): string {
   } catch {
     return "file";
   }
+}
+
+// Build the subfolder path for a gallery download. When autoFolderPerAlbum is
+// on, the album name is sanitized and appended to the download directory.
+// Exported here (not in gallery-runner.ts) so that per-hoster crawl hooks can
+// use it without importing from gallery-runner (which would create a circular
+// dependency: gallery-runner → ALL_MODELS → hoster model → gallery-runner).
+export function buildSubfolder(albumName: string, config: MDConfig): string {
+  if (!config.autoFolderPerAlbum) return config.downloadDirectory;
+  const safeName = albumName
+    .split("/")
+    .map((seg) => sanitizeFilename(seg))
+    .join("/");
+  return config.downloadDirectory ? `${config.downloadDirectory}/${safeName}` : safeName;
 }
 
 export function collectThumbnailTransform(
@@ -152,4 +168,41 @@ export async function fetchAdditionalItems(
   }
 
   return allItems;
+}
+
+// Run an async fn over every item with a bounded concurrency, honouring an
+// AbortSignal so a cancelled crawl stops scheduling new work. Results are
+// returned in completion order; a fn that throws (e.g. AbortError) contributes
+// no result. Used by the shared gallery runner's crawl phase to limit
+// concurrent crawl-item fetches (e.g. aggregator hoster set resolution).
+export async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  concurrency: number,
+  signal: AbortSignal,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = [];
+  let cursor = 0;
+
+  async function worker(): Promise<void> {
+    while (cursor < items.length) {
+      if (signal.aborted) return;
+      const idx = cursor++;
+      const item = items[idx];
+      // noUncheckedIndexedAccess: items[idx] is T | undefined. Only skip a
+      // genuinely missing slot — a falsy-but-valid value (e.g. 0) must run.
+      if (item === undefined) continue;
+      try {
+        const r = await fn(item, idx);
+        if (signal.aborted) return;
+        results.push(r);
+      } catch {
+        if (signal.aborted) return;
+      }
+    }
+  }
+
+  const n = Math.min(concurrency, items.length);
+  if (n > 0) await Promise.all(Array.from({ length: n }, worker));
+  return results;
 }
