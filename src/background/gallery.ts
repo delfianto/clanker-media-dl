@@ -86,10 +86,17 @@ async function upsertJob(job: DownloadJob): Promise<void> {
 
 export async function listJobs(): Promise<DownloadJob[]> {
   const jobs = await readJobs();
+  const getPostedDateString = (postedAt: number): string => {
+    const d = new Date(postedAt * 1000);
+    const p = (n: number) => String(n).padStart(2, "0");
+    return `${d.getUTCFullYear()}.${p(d.getUTCMonth() + 1)}.${p(d.getUTCDate())}`;
+  };
   return jobs.sort((a, b) => {
     if (a.postedAt !== undefined && b.postedAt !== undefined) {
-      if (b.postedAt !== a.postedAt) {
-        return b.postedAt - a.postedAt;
+      const dateA = getPostedDateString(a.postedAt);
+      const dateB = getPostedDateString(b.postedAt);
+      if (dateA !== dateB) {
+        return dateB.localeCompare(dateA);
       }
       return a.subfolder.localeCompare(b.subfolder);
     }
