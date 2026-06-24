@@ -221,6 +221,10 @@ let currentPage = 1;
 const PAGE_SIZE = 50;
 let currentFilter: "all" | "done" | "partial" | "running" = "all";
 
+export function getCurrentFilter() {
+  return currentFilter;
+}
+
 export function setHistoryFilter(filter: "all" | "done" | "partial" | "running"): void {
   currentFilter = filter;
   currentPage = 1;

@@ -7,7 +7,7 @@ import { DEFAULT_SETTINGS } from "../settings/schema";
 import { $, clone, toast, el } from "./dom";
 import { renderPanel, renderSidebar } from "./tab-hosters";
 import { renderDownloadsSettings } from "./tab-downloads";
-import { formatJobStatus, loadHistoryTab, setHistoryFilter } from "./tab-history";
+import { formatJobStatus, loadHistoryTab, setHistoryFilter, getCurrentFilter } from "./tab-history";
 import { formatLogLine, loadLogsTab } from "./tab-logs";
 
 let settings: Settings;
@@ -215,6 +215,15 @@ async function init(): Promise<void> {
       }
       const statusEl = card.querySelector<HTMLElement>(".job-status");
       const st = prog.status ?? "running";
+
+      // If the job finished or errored, and we are currently filtering for "running"
+      // jobs, remove the card from the UI immediately and refresh the list to fix pagination.
+      if (st !== "running" && getCurrentFilter() === "running") {
+        card.remove();
+        void loadHistoryTab(expandedJobIds);
+        return;
+      }
+
       if (statusEl) {
         statusEl.className = `job-status ${st}`;
         statusEl.textContent = formatJobStatus(prog as unknown as DownloadJob);
