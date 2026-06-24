@@ -113,32 +113,25 @@ function parsePostedAt(raw: unknown): number | null {
   return secs;
 }
 
-// "YYYY.MM.DD_HH.MM.SS" in UTC (deterministic regardless of the user's timezone),
+// "YYYY.MM.DD" in UTC (deterministic regardless of the user's timezone),
 // or "" when there is no usable timestamp.
-function formatPostedTimestamp(postedAt: number | null): string {
+function formatPostedDate(postedAt: number | null): string {
   if (postedAt === null) return "";
   const d = new Date(postedAt * 1000);
   const p = (n: number) => String(n).padStart(2, "0");
-  const date = `${d.getUTCFullYear()}.${p(d.getUTCMonth() + 1)}.${p(d.getUTCDate())}`;
-  const time = `${p(d.getUTCHours())}.${p(d.getUTCMinutes())}.${p(d.getUTCSeconds())}`;
-  return `${date}_${time}`;
+  return `${d.getUTCFullYear()}.${p(d.getUTCMonth() + 1)}.${p(d.getUTCDate())}`;
 }
 
-// Collapse whitespace and path separators to dots so a value is safe as a single
-// folder segment: "Ariel A" → "Ariel.A", "A / B" → "A.B".
-function dotify(s: string): string {
+function cleanSegment(s: string): string {
   return s
     .trim()
-    .replace(/[\s/\\]+/g, ".")
-    .replace(/\.{2,}/g, ".")
-    .replace(/^\.+|\.+$/g, "");
+    .replace(/[/\\]+/g, " - ")
+    .replace(/\s+/g, " ")
+    .replace(/^[\s\-.]+|[\s\-.]+$/g, "");
 }
 
-// Build the per-set folder path. With a posted timestamp:
-//   "Studio/YYYY.MM.DD_HH.MM.SS_Model.Name_Gallery.Name"
-// Timestamp and model are omitted when unavailable, e.g. "Studio/Gallery.Name".
-// The timestamp disambiguates same-model + same-title sets that would otherwise
-// collide into one folder and clobber each other.
+// Build the per-set folder path: "Studio/Date - Model - Gallery Name"
+// Timestamp and model are omitted when unavailable, e.g. "Studio/Gallery Name".
 export function deriveGalleryName(
   site: string,
   model: string,
@@ -150,9 +143,25 @@ export function deriveGalleryName(
     studio = studio.charAt(0).toUpperCase() + studio.slice(1);
   }
 
-  const segment = [formatPostedTimestamp(postedAt), dotify(model), dotify(name)]
-    .filter(Boolean)
-    .join("_");
+  // Clean up gallery name: strip model name and site name if they are present in the name
+  let galleryName = name;
+  if (model) {
+    const escapedModel = model.trim().replace(/[.+?^${}()|[\\]\\\\]/g, "\\$&");
+    const rxModel = new RegExp(`^${escapedModel}\\s*-\\s*|\\s*-\\s*${escapedModel}`, "i");
+    galleryName = galleryName.replace(rxModel, "");
+  }
+  if (site) {
+    const escapedSite = site.trim().replace(/[.+?^${}()|[\\]\\\\]/g, "\\$&");
+    const rxSite = new RegExp(`^${escapedSite}\\s*-\\s*|\\s*-\\s*${escapedSite}`, "i");
+    galleryName = galleryName.replace(rxSite, "");
+  }
+
+  const cleanedModel = cleanSegment(model);
+  const cleanedGallery = cleanSegment(galleryName);
+  const datePart = formatPostedDate(postedAt);
+
+  // We keep clean names with normal spaces (no dotify) but strip invalid chars
+  const segment = [datePart, cleanedModel, cleanedGallery].filter(Boolean).join(" - ");
 
   return studio ? `${studio}/${segment}` : segment;
 }

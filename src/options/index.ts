@@ -864,16 +864,14 @@ async function init(): Promise<void> {
         progressEl.setAttribute("max", String(prog.totalCount ?? 0));
       }
       const statusEl = card.querySelector<HTMLElement>(".job-status");
+      const st = prog.status ?? "running";
       if (statusEl) {
-        const st = prog.status ?? "running";
-        const completed = prog.completedCount ?? 0;
-        const total = prog.totalCount ?? 0;
-        const failed = prog.failedCount ?? 0;
         statusEl.className = `job-status ${st}`;
-        if (st === "running") statusEl.textContent = `${completed} / ${total}`;
-        else if (st === "done")
-          statusEl.textContent = failed > 0 ? `Done — ${failed} failed` : `Done — ${total} files`;
-        else statusEl.textContent = `Error — ${failed} failed`;
+        statusEl.textContent = formatJobStatus(prog as unknown as DownloadJob);
+      }
+      const stopBtn = card.querySelector<HTMLElement>(".job-stop-btn");
+      if (stopBtn && st !== "running") {
+        stopBtn.remove();
       }
       const pctEl = card.querySelector<HTMLElement>(".job-pct");
       const total = prog.totalCount ?? 0;

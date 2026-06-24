@@ -163,32 +163,30 @@ describe("parseSet", () => {
 });
 
 describe("deriveGalleryName", () => {
-  it("prepends YYYY.MM.DD_HH.MM.SS and dots spaces when a posted timestamp is given", () => {
+  it("prepends YYYY.MM.DD and uses space-hyphen-space separators when a posted timestamp is given", () => {
     expect(deriveGalleryName("femjoy.com", "Ariel A", "Sway", TS_2020)).toBe(
-      "Femjoy/2020.01.01_00.00.00_Ariel.A_Sway",
+      "Femjoy/2020.01.01 - Ariel A - Sway",
     );
   });
 
-  it("zero-pads the time components (UTC)", () => {
+  it("extracts correct date components (UTC)", () => {
     // 2020-01-02 03:04:05 UTC
-    expect(deriveGalleryName("x.com", "", "S", 1577934245)).toBe("X/2020.01.02_03.04.05_S");
+    expect(deriveGalleryName("x.com", "", "S", 1577934245)).toBe("X/2020.01.02 - S");
   });
 
   it("omits the date segment when postedAt is null/absent", () => {
-    expect(deriveGalleryName("femjoy.com", "Ariel A", "Sway")).toBe("Femjoy/Ariel.A_Sway");
-    expect(deriveGalleryName("femjoy.com", "Ariel A", "Sway", null)).toBe("Femjoy/Ariel.A_Sway");
+    expect(deriveGalleryName("femjoy.com", "Ariel A", "Sway")).toBe("Femjoy/Ariel A - Sway");
+    expect(deriveGalleryName("femjoy.com", "Ariel A", "Sway", null)).toBe("Femjoy/Ariel A - Sway");
   });
 
   it("omits the model segment when model is empty", () => {
-    expect(deriveGalleryName("femjoy.com", "", "Sway", TS_2020)).toBe(
-      "Femjoy/2020.01.01_00.00.00_Sway",
-    );
+    expect(deriveGalleryName("femjoy.com", "", "Sway", TS_2020)).toBe("Femjoy/2020.01.01 - Sway");
     expect(deriveGalleryName("femjoy.com", "", "Sway")).toBe("Femjoy/Sway");
   });
 
   it("returns just the set segment when site is empty", () => {
-    expect(deriveGalleryName("", "", "Sway", TS_2020)).toBe("2020.01.01_00.00.00_Sway");
-    expect(deriveGalleryName("", "Model", "Sway")).toBe("Model_Sway");
+    expect(deriveGalleryName("", "", "Sway", TS_2020)).toBe("2020.01.01 - Sway");
+    expect(deriveGalleryName("", "Model", "Sway")).toBe("Model - Sway");
   });
 
   it("strips the TLD and capitalizes the studio", () => {
@@ -196,7 +194,7 @@ describe("deriveGalleryName", () => {
     expect(deriveGalleryName("met-art.com", "", "X")).toBe("Met-art/X");
   });
 
-  it("collapses spaces and slashes in model/name to single dots", () => {
-    expect(deriveGalleryName("x.com", "Two Words", "A / B / C")).toBe("X/Two.Words_A.B.C");
+  it("collapses consecutive slashes/spaces and converts slashes in model/name to hyphens", () => {
+    expect(deriveGalleryName("x.com", "Two Words", "A / B / C")).toBe("X/Two Words - A - B - C");
   });
 });
