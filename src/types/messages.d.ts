@@ -76,7 +76,7 @@ export type MDJobProgressMessage = {
   completedCount: number;
   totalCount: number;
   failedCount: number;
-  status: "running" | "done" | "error";
+  status: "running" | "done" | "error" | "canceled";
   items?: DownloadJobItem[];
 };
 
@@ -87,6 +87,12 @@ export type MDListJobsResponse = { jobs: DownloadJob[] };
 // Options page → SW: request deletion of a specific job from history.
 export type MDDeleteJobRequest = {
   type: "MD_DELETE_JOB";
+  jobId: string;
+};
+
+// Options page → SW: request cancel/stop of a specific running job.
+export type MDCancelJobRequest = {
+  type: "MD_CANCEL_JOB";
   jobId: string;
 };
 

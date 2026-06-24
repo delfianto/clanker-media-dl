@@ -87,6 +87,18 @@ export async function deleteJob(jobId: string): Promise<void> {
   await browser.storage.local.set({ [JOBS_KEY]: filtered });
 }
 
+export async function cancelJob(jobId: string): Promise<void> {
+  const jobs = await readJobs();
+  const idx = jobs.findIndex((j) => j.jobId === jobId);
+  const job = jobs[idx];
+  if (job && job.status === "running") {
+    job.status = "canceled";
+    await upsertJob(job);
+    broadcastProgress(job);
+    void appendLog("warn", "Job cancelled by user", jobId);
+  }
+}
+
 // ── Progress broadcast ───────────────────────────────────────────────────────
 
 function broadcastProgress(job: DownloadJob): void {
@@ -338,6 +350,12 @@ async function runQueue(
 
   async function runOne(): Promise<void> {
     while (cursor < entries.length) {
+      const currentJobs = await readJobs();
+      const currentJob = currentJobs.find((j) => j.jobId === job.jobId);
+      if (!currentJob || currentJob.status === "canceled") {
+        break;
+      }
+
       const entry = entries[cursor++];
       if (!entry) continue;
       const item = entry.item;
@@ -513,6 +531,18 @@ export async function startGalleryJob(req: MDGalleryStartRequest): Promise<void>
     runQueue(job, imageEntries, req.maxParallelImg, maxRetries),
     runQueue(job, mediaEntries, req.maxParallelVid, maxRetries),
   ]);
+
+  // Read latest job status from storage to see if it was cancelled
+  const latestJobs = await readJobs();
+  const latestJob = latestJobs.find((j) => j.jobId === job.jobId);
+  if (latestJob && latestJob.status === "canceled") {
+    void appendLog(
+      "info",
+      `Job stopped by user: ${job.completedCount} completed, ${job.failedCount} failed`,
+      job.jobId,
+    );
+    return;
+  }
 
   job.status = job.failedCount > 0 ? "error" : "done";
   await upsertJob(job);

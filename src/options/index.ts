@@ -366,12 +366,21 @@ function formatJobStatus(job: DownloadJob): string {
       ? `Done — ${job.failedCount} failed`
       : `Done — ${job.totalCount} files`;
   }
+  if (job.status === "canceled") {
+    return `Stopped — ${job.completedCount} / ${job.totalCount}`;
+  }
   return `Error — ${job.failedCount} failed`;
 }
 
 function renderJobCard(job: DownloadJob): HTMLElement {
   const statusClass =
-    job.status === "running" ? "running" : job.status === "done" ? "done" : "error";
+    job.status === "running"
+      ? "running"
+      : job.status === "done"
+        ? "done"
+        : job.status === "canceled"
+          ? "canceled"
+          : "error";
   const pct = job.totalCount > 0 ? job.completedCount / job.totalCount : 0;
 
   const progress = el("progress", {});
@@ -423,16 +432,38 @@ function renderJobCard(job: DownloadJob): HTMLElement {
       });
   });
 
+  const headerRight = el("div", { className: "job-header-right" }, [
+    el("span", { className: `job-status ${statusClass}`, textContent: formatJobStatus(job) }),
+  ]);
+
+  if (job.status === "running") {
+    const stopBtn = el("button", {
+      className: "job-stop-btn",
+      title: "Stop/Cancel download",
+      textContent: "Stop",
+    });
+    stopBtn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      void browser.runtime
+        .sendMessage({
+          type: "MD_CANCEL_JOB",
+          jobId: job.jobId,
+        })
+        .then(() => {
+          void loadHistoryTab();
+        });
+    });
+    headerRight.append(stopBtn);
+  }
+  headerRight.append(deleteBtn);
+
   const card = el(
     "div",
     { className: isExpanded ? "job-card expanded" : "job-card", id: `job-${job.jobId}` },
     [
       el("div", { className: "job-header" }, [
         el("span", { className: "job-title", textContent: job.subfolder || job.hosterId }),
-        el("div", { className: "job-header-right" }, [
-          el("span", { className: `job-status ${statusClass}`, textContent: formatJobStatus(job) }),
-          deleteBtn,
-        ]),
+        headerRight,
       ]),
       progress,
       el("div", { className: "job-meta" }, [
