@@ -30,9 +30,12 @@ const JOBS_KEY = "downloadJobs";
 interface PendingDownload {
   resolve: () => void;
   reject: (err: Error) => void;
+  jobId?: string;
 }
 
 const pendingDownloads = new Map<number, PendingDownload>();
+
+let activeJobPromise: Promise<void> = Promise.resolve();
 
 browser.downloads.onChanged.addListener((delta) => {
   if (delta.state === undefined) return;
@@ -98,6 +101,14 @@ export async function cancelJob(jobId: string): Promise<void> {
   if (job && job.status === "running") {
     job.status = "canceled";
     await upsertJob(job);
+
+    // Cancel all active downloads in browser for this job
+    for (const [downloadId, pending] of pendingDownloads.entries()) {
+      if (pending.jobId === jobId) {
+        browser.downloads.cancel(downloadId).catch(() => {});
+      }
+    }
+
     broadcastProgress(job);
     void appendLog("warn", "Job cancelled by user", jobId);
   }
@@ -283,7 +294,7 @@ async function hasOffscreenDocument(): Promise<boolean> {
   return clients.some((c: any) => c.url.includes("offscreen/index.html"));
 }
 
-async function downloadViaOffscreen(url: string, filePath: string): Promise<void> {
+async function downloadViaOffscreen(url: string, filePath: string, jobId?: string): Promise<void> {
   await ensureOffscreenDocument();
 
   const response = (await browser.runtime.sendMessage({
@@ -308,7 +319,7 @@ async function downloadViaOffscreen(url: string, filePath: string): Promise<void
     });
 
     await new Promise<void>((resolve, reject) => {
-      pendingDownloads.set(downloadId, {
+      const pending: PendingDownload = {
         resolve: () => {
           browser.runtime.sendMessage({ type: "MD_OFFSCREEN_CLEANUP", blobUrl }).catch(() => {});
           resolve();
@@ -317,7 +328,11 @@ async function downloadViaOffscreen(url: string, filePath: string): Promise<void
           browser.runtime.sendMessage({ type: "MD_OFFSCREEN_CLEANUP", blobUrl }).catch(() => {});
           reject(err);
         },
-      });
+      };
+      if (jobId !== undefined) {
+        pending.jobId = jobId;
+      }
+      pendingDownloads.set(downloadId, pending);
     });
   } catch (err) {
     browser.runtime.sendMessage({ type: "MD_OFFSCREEN_CLEANUP", blobUrl }).catch(() => {});
@@ -325,9 +340,13 @@ async function downloadViaOffscreen(url: string, filePath: string): Promise<void
   }
 }
 
-export async function attemptDownload(url: string, filePath: string): Promise<void> {
+export async function attemptDownload(
+  url: string,
+  filePath: string,
+  jobId?: string,
+): Promise<void> {
   if (url.includes("erome.com") && isMediaFile(filePath)) {
-    return downloadViaOffscreen(url, filePath);
+    return downloadViaOffscreen(url, filePath, jobId);
   }
 
   const downloadId = await browser.downloads.download({
@@ -336,7 +355,11 @@ export async function attemptDownload(url: string, filePath: string): Promise<vo
     conflictAction: "uniquify",
   });
   await new Promise<void>((resolve, reject) => {
-    pendingDownloads.set(downloadId, { resolve, reject });
+    const pending: PendingDownload = { resolve, reject };
+    if (jobId !== undefined) {
+      pending.jobId = jobId;
+    }
+    pendingDownloads.set(downloadId, pending);
   });
 }
 
@@ -397,6 +420,18 @@ async function runQueue(
         continue;
       }
 
+      // Check cancellation right after resolving the item
+      const currentJobsCheck = await readJobs();
+      const currentJobCheck = currentJobsCheck.find((j) => j.jobId === job.jobId);
+      if (!currentJobCheck || currentJobCheck.status === "canceled") {
+        job.status = "canceled";
+        if (job.items?.[idx]) {
+          job.items[idx].status = "pending";
+          await upsertJob(job);
+        }
+        break;
+      }
+
       const resolvedFilename =
         item.kind === "resolve-viewer" && !item.filename.includes(".")
           ? (new URL(imageUrl).pathname.split("/").at(-1) ?? item.filename)
@@ -408,7 +443,16 @@ async function runQueue(
       try {
         let succeeded = false;
         let lastErr: unknown;
+        let isCanceled = false;
         for (let attempt = 0; attempt <= maxRetries; attempt++) {
+          const jobsCheck = await readJobs();
+          const jobCheck = jobsCheck.find((j) => j.jobId === job.jobId);
+          if (!jobCheck || jobCheck.status === "canceled") {
+            job.status = "canceled";
+            isCanceled = true;
+            break;
+          }
+
           if (attempt > 0) {
             const backoff = 1000 * 2 ** (attempt - 1);
             void appendLog(
@@ -419,7 +463,7 @@ async function runQueue(
             await sleep(backoff);
           }
           try {
-            await attemptDownload(imageUrl, filePath);
+            await attemptDownload(imageUrl, filePath, job.jobId);
             succeeded = true;
             break;
           } catch (dlErr) {
@@ -427,6 +471,14 @@ async function runQueue(
             if (attempt < maxRetries && isTransientError(dlErr)) continue;
             break;
           }
+        }
+
+        if (isCanceled) {
+          if (job.items?.[idx]) {
+            job.items[idx].status = "pending";
+            await upsertJob(job);
+          }
+          break;
         }
 
         if (succeeded) {
@@ -529,33 +581,50 @@ export async function startGalleryJob(req: MDGalleryStartRequest): Promise<void>
       ? stored["maxDownloadRetries"]
       : DEFAULT_SETTINGS.maxDownloadRetries;
 
-  // Run both queues concurrently — images at maxParallelImg, media at maxParallelVid.
-  // Both share the same job counters; job completes when both queues drain.
-  await Promise.all([
-    runQueue(job, imageEntries, req.maxParallelImg, maxRetries),
-    runQueue(job, mediaEntries, req.maxParallelVid, maxRetries),
-  ]);
+  // Chain the execution of this job to serialize downloading.
+  const myTurn = activeJobPromise
+    .then(async () => {
+      // Read latest status to verify it wasn't cancelled while waiting in the queue
+      const latestJobs = await readJobs();
+      const latestJob = latestJobs.find((j) => j.jobId === job.jobId);
+      if (latestJob && latestJob.status === "canceled") {
+        return;
+      }
 
-  // Read latest job status from storage to see if it was cancelled
-  const latestJobs = await readJobs();
-  const latestJob = latestJobs.find((j) => j.jobId === job.jobId);
-  if (latestJob && latestJob.status === "canceled") {
-    void appendLog(
-      "info",
-      `Job stopped by user: ${job.completedCount} completed, ${job.failedCount} failed`,
-      job.jobId,
-    );
-    return;
-  }
+      // Run both queues concurrently — images at maxParallelImg, media at maxParallelVid.
+      // Both share the same job counters; job completes when both queues drain.
+      await Promise.all([
+        runQueue(job, imageEntries, req.maxParallelImg, maxRetries),
+        runQueue(job, mediaEntries, req.maxParallelVid, maxRetries),
+      ]);
 
-  job.status = job.failedCount > 0 ? "error" : "done";
-  await upsertJob(job);
-  broadcastProgress(job);
-  void appendLog(
-    "info",
-    `Job complete: ${job.completedCount - job.failedCount} ok, ${job.failedCount} failed`,
-    job.jobId,
-  );
+      // Read latest job status from storage to see if it was cancelled
+      const latestJobsAfter = await readJobs();
+      const latestJobAfter = latestJobsAfter.find((j) => j.jobId === job.jobId);
+      if (latestJobAfter && latestJobAfter.status === "canceled") {
+        void appendLog(
+          "info",
+          `Job stopped by user: ${job.completedCount} completed, ${job.failedCount} failed`,
+          job.jobId,
+        );
+        return;
+      }
+
+      job.status = job.failedCount > 0 ? "error" : "done";
+      await upsertJob(job);
+      broadcastProgress(job);
+      void appendLog(
+        "info",
+        `Job complete: ${job.completedCount - job.failedCount} ok, ${job.failedCount} failed`,
+        job.jobId,
+      );
+    })
+    .catch((err) => {
+      console.error(`[md] Error running queued job ${job.jobId}:`, err);
+    });
+
+  activeJobPromise = myTurn;
+  await myTurn;
 }
 
 // Called at SW startup to recover any jobs that were interrupted by SW termination.
