@@ -1,13 +1,29 @@
 import { describe, it, expect } from "bun:test";
 import { parseSet, deriveGalleryName } from "../src/hosts/girlsreleased/api";
 
+// 2020-01-01 00:00:00 UTC
+const TS_2020 = 1577836800;
+
+function setWith(date: unknown) {
+  return {
+    set: [
+      1,
+      "Set",
+      date,
+      "site.com",
+      [[0, 0, 0, "https://imx.to/i/a", "https://imx.to/u/t/a.jpg", "a.jpg"]],
+      [],
+    ],
+  };
+}
+
 describe("parseSet", () => {
-  it("parses a full set with model and multiple files", () => {
+  it("parses a full set with date, model, and multiple files", () => {
     const parsed = parseSet({
       set: [
         147671,
         "Stranden",
-        null,
+        TS_2020,
         "errotica-archives.com",
         [
           [0, 0, 0, "https://imx.to/i/abc", "https://imx.to/u/t/x/abc.jpg", "img_001.jpg"],
@@ -27,6 +43,7 @@ describe("parseSet", () => {
     expect(parsed?.name).toBe("Stranden");
     expect(parsed?.site).toBe("errotica-archives.com");
     expect(parsed?.model).toBe("Deni");
+    expect(parsed?.postedAt).toBe(TS_2020);
     expect(parsed?.files).toHaveLength(2);
     expect(parsed?.files[0]).toEqual({
       viewerUrl: "https://imx.to/i/abc",
@@ -35,12 +52,26 @@ describe("parseSet", () => {
     });
   });
 
+  it("yields postedAt = null for an absent / null / implausible date slot", () => {
+    expect(parseSet(setWith(null))?.postedAt).toBeNull();
+    expect(parseSet(setWith(0))?.postedAt).toBeNull(); // epoch, before the 2000 floor
+    expect(parseSet(setWith(5))?.postedAt).toBeNull(); // looks like a count, not a date
+    expect(parseSet(setWith("not a number"))?.postedAt).toBeNull();
+    const farFuture = Math.floor(Date.now() / 1000) + 10 * 365 * 86400;
+    expect(parseSet(setWith(farFuture))?.postedAt).toBeNull();
+  });
+
+  it("accepts a string timestamp and tolerates millisecond values", () => {
+    expect(parseSet(setWith(String(TS_2020)))?.postedAt).toBe(TS_2020);
+    expect(parseSet(setWith(TS_2020 * 1000))?.postedAt).toBe(TS_2020);
+  });
+
   it("keeps a set whose models element is absent (length 5)", () => {
     const parsed = parseSet({
       set: [
         1,
         "Set",
-        null,
+        TS_2020,
         "site.com",
         [[0, 0, 0, "https://imx.to/i/a", "https://imx.to/u/t/a.jpg", "a.jpg"]],
       ],
@@ -50,26 +81,12 @@ describe("parseSet", () => {
     expect(parsed?.files).toHaveLength(1);
   });
 
-  it("tolerates an empty models array", () => {
-    const parsed = parseSet({
-      set: [
-        1,
-        "Set",
-        null,
-        "site.com",
-        [[0, 0, 0, "https://imx.to/i/a", "https://imx.to/u/t/a.jpg", "a.jpg"]],
-        [],
-      ],
-    });
-    expect(parsed?.model).toBe("");
-  });
-
   it("keeps a file with no originalFilename, deriving it from the viewer URL slug", () => {
     const parsed = parseSet({
       set: [
         1,
         "Set",
-        null,
+        TS_2020,
         "site.com",
         [[0, 0, 0, "https://imx.to/i/abc123", "https://imx.to/u/t/abc123.jpg"]],
         [],
@@ -84,7 +101,7 @@ describe("parseSet", () => {
       set: [
         1,
         "Set",
-        null,
+        TS_2020,
         "site.com",
         [
           [0, 0, 0, "", "", ""],
@@ -110,25 +127,33 @@ describe("parseSet", () => {
 });
 
 describe("deriveGalleryName", () => {
-  it("combines site, model, and set name", () => {
-    expect(deriveGalleryName("femjoy.com", "Ariel A", "Sway")).toBe("Femjoy/Ariel A - Sway");
+  it("prepends YYYY.MM.DD and dots spaces when a posted date is given", () => {
+    expect(deriveGalleryName("femjoy.com", "Ariel A", "Sway", TS_2020)).toBe(
+      "Femjoy/2020.01.01_Ariel.A_Sway",
+    );
+  });
+
+  it("omits the date segment when postedAt is null/absent", () => {
+    expect(deriveGalleryName("femjoy.com", "Ariel A", "Sway")).toBe("Femjoy/Ariel.A_Sway");
+    expect(deriveGalleryName("femjoy.com", "Ariel A", "Sway", null)).toBe("Femjoy/Ariel.A_Sway");
   });
 
   it("omits the model segment when model is empty", () => {
+    expect(deriveGalleryName("femjoy.com", "", "Sway", TS_2020)).toBe("Femjoy/2020.01.01_Sway");
     expect(deriveGalleryName("femjoy.com", "", "Sway")).toBe("Femjoy/Sway");
   });
 
-  it("returns just the (cleaned) set name when site is empty", () => {
-    expect(deriveGalleryName("", "", "Sway")).toBe("Sway");
-    expect(deriveGalleryName("", "Model", "Sway")).toBe("Sway");
+  it("returns just the set segment when site is empty", () => {
+    expect(deriveGalleryName("", "", "Sway", TS_2020)).toBe("2020.01.01_Sway");
+    expect(deriveGalleryName("", "Model", "Sway")).toBe("Model_Sway");
   });
 
-  it("strips the TLD and capitalizes the site", () => {
+  it("strips the TLD and capitalizes the studio", () => {
     expect(deriveGalleryName("errotica-archives.com", "", "Set")).toBe("Errotica-archives/Set");
     expect(deriveGalleryName("met-art.com", "", "X")).toBe("Met-art/X");
   });
 
-  it("normalizes slash separators in the set name to ' - '", () => {
-    expect(deriveGalleryName("x.com", "", "A / B / C")).toBe("X/A - B - C");
+  it("collapses spaces and slashes in model/name to single dots", () => {
+    expect(deriveGalleryName("x.com", "Two Words", "A / B / C")).toBe("X/Two.Words_A.B.C");
   });
 });
