@@ -35,7 +35,18 @@ function makeManifest(target: Browser): Record<string, unknown> {
     description:
       "One-click image downloads from image hosting sites. Clean, private, no external server.",
     icons: { "48": "icons/icon-48.png", "96": "icons/icon-96.png" },
-    permissions: ["storage", "downloads", "declarativeNetRequest", "offscreen", "unlimitedStorage"],
+    // "downloads.ui" (Chrome only) lets the SW suppress the download shelf/bubble
+    // via downloads.setUiOptions. Without it, Chrome re-renders its download UI
+    // for every file — thousands of times during a crawl — which janks the whole
+    // browser UI thread. Firefox has no such permission/API, so it's omitted there.
+    permissions: [
+      "storage",
+      "downloads",
+      ...(target === "chrome" ? ["downloads.ui"] : []),
+      "declarativeNetRequest",
+      "offscreen",
+      "unlimitedStorage",
+    ],
     host_permissions: HOST_PERMISSIONS,
     background: { service_worker: "src/background/index.ts", type: "module" },
     action: {
