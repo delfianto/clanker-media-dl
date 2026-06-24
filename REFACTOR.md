@@ -1,7 +1,8 @@
 # REFACTOR — Gallery resolution pipeline & the girlsreleased aggregator
 
-> Status: **PROPOSAL — not executed.** This document is the analysis + plan only.
-> No source files have been changed. Author: architecture review, 2026-06-24.
+> Status: **IMPLEMENTED.** Plan delivered in `72f65c0`; post-audit hardening + extensive
+> tests in `8734d68`. See **§11** for the per-finding status map and the one remaining
+> open item (live imagevenue verification). Original analysis: architecture review, 2026-06-24.
 > Scope: `src/background/gallery.ts`, `src/background/fetcher.ts`,
 > `src/content/shared/gallery-runner.ts`, `src/hosts/girlsreleased/*`,
 > `src/types/hoster.d.ts`, `src/types/messages.d.ts`. Bunkr and the other hosters
@@ -512,7 +513,9 @@ Each phase is independently shippable and leaves `bun run check` + `bun test` gr
   second aggregator reuse them without ugly hacks.
 - No (yet) folding of Bunkr's own `extractFromViewer`/`resolveUrl` into the leaf registry
   — see open question 1.
-- No retry/backoff changes.
+- ~~No retry/backoff changes.~~ **Reversed in follow-up `8734d68`** — `withRetry` now
+  wraps all three resolver fetch points (viewer GET, `resolveFromViewer`, `resolveUrl`).
+  See §11.
 
 ## 9. Open questions
 
@@ -535,6 +538,64 @@ Each phase is independently shippable and leaves `bun run check` + `bun test` gr
 2. PR2 = Phase 2 + 5 (downstream module + extractor cleanup).
 3. PR3 = Phase 4 (API-first + typed API) — needs manual verification.
 4. PR4 = Phase 3 (imagevenue self-priming) — needs live imagevenue verification.
+
+> Actual rollout: shipped as two commits, not four PRs — Phases 1–5 in `72f65c0`,
+> post-audit hardening in `8734d68`. See §11.
+
+---
+
+## 11. Implementation status & follow-ups
+
+Delivered in two commits on `main`:
+
+- **`72f65c0`** — the plan: `resolveFromViewer` hook + pipeline (Phase 1), the
+  `src/resolvers/` leaf-resolver tier (Phase 2), imagevenue self-priming (Phase 3),
+  API-first `/set/` crawl + typed `parseSet` (Phase 4), optional `extractor` (Phase 5).
+- **`8734d68`** — hardening surfaced by a post-implementation audit, plus extensive unit
+  tests (105 → 150).
+
+### Findings → resolution
+
+| Finding | Status | Where |
+| --- | --- | --- |
+| F1 imagevenue cookie landmine | ✅ done | `resolvers/imagevenue.ts` self-primes (`no-store`→`reload`); framework GET skipped |
+| F2 `resolveUrl` dual-meaning + wasted GET | ✅ done | `resolveFromViewer` short-circuits the GET (`gallery.ts`) |
+| F3 aggregator-as-single-host | ✅ done | leaf-resolver registry; `resolveFromViewer = resolveLeaf` |
+| F4 imx.to resolved two ways | ✅ done | single `imxResolver` (`fromThumbnail` + `resolveFromViewer`) |
+| F5 set-name duplication | ✅ done | `deriveGalleryName` shared by `model.ts` + `gallery-runner.ts` |
+| F6 entry-path asymmetry | ✅ done | direct `/set/` emits a self-referential item → same crawl |
+| F7 vestigial `extractor` | ✅ done | `extractor?` optional; no `"continuebutton"` left |
+| F8 magic JSON indices | ✅ done | typed `parseSet` (`RawSet`/`RawFile`) |
+| F9 substring host matching | ✅ done | hostname `===`/`endsWith` in the resolvers |
+| F10 `getModel(as never)` / global fallback | ✅ done | cast removed (`8734d68`); `window` access guarded |
+
+### Post-audit follow-ups (`8734d68`)
+
+1. **Retry resilience** — `resolveFromViewer`/`resolveUrl` fetches bypassed the viewer-GET
+   retry and had none. Extracted `withRetry` + `isTransientFetchError` into
+   `src/background/retry.ts`; all three fetch points now share one transient-retry policy.
+   (Reverses the original §8 non-goal.)
+2. **`parseSet` over-strictness** — loosened length guards (set / file `>= 5`) so a set
+   with no assigned model, or a file with no original filename, is kept (URL-slug fallback)
+   rather than silently dropped.
+3. **Cosmetic** — always-`document` scope in `collectGirlsreleasedItems` simplified;
+   nonsensical set-expansion log line fixed.
+
+### Tests — 150 passing across 10 files
+
+New: `retry.test.ts` (`withRetry` + `isTransientFetchError`),
+`girlsreleased-api.test.ts` (`parseSet` incl. the loosened guards + `deriveGalleryName`),
+`resolvers.test.ts` (hostname matches incl. **lookalike rejection**, `fromThumbnail`,
+imx POST + imagevenue interstitial success/error paths, `resolveLeaf` dispatch +
+unsupported-host throw, `thumbnailToFull`).
+
+### Still open
+
+- **Live imagevenue verification** (§6 / Phase 3) — the interstitial + cookie flow is now
+  retry-hardened and mock-tested, but **not yet confirmed against the real site**. Only
+  reachable via a `/site/` crawl of an imagevenue-hosted set.
+- Open questions 1–3 (§9): fold Bunkr into the leaf registry, promote-a-leaf-resolver
+  on demand, and `/api/0.3/` shape stability — all still open by choice.
 
 ---
 
