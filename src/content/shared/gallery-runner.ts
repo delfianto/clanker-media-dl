@@ -270,7 +270,14 @@ export function runGalleryAdapter(
         if (elapsed >= 10000) {
           clearInterval(activeInterval);
           activeInterval = null;
-          console.warn(`[md] Timed out waiting for selector: ${selector}`);
+          // waitForSelector is a "page ready" heuristic, but some hosters
+          // collect from an API rather than the DOM (girlsreleased) and some
+          // sites render their grid as non-anchor cards, so the selector may
+          // never match even though the gallery is perfectly downloadable.
+          // Activate anyway: run() collects via the model's own logic and bails
+          // cleanly (no button) if it genuinely finds nothing.
+          console.warn(`[md] Timed out waiting for selector: ${selector} — activating anyway`);
+          void run();
         }
       }
     }, 250);
