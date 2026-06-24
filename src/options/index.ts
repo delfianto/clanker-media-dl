@@ -1,14 +1,14 @@
 import browser from "webextension-polyfill";
 import type { HosterId, Settings } from "../types/global";
 import type { DownloadJob, DownloadLog } from "../types/jobs";
-import type { MDJobProgressMessage, MDLogMessage } from "../types/messages";
+import type { MDJobProgressMessage } from "../types/messages";
 import { ALL_MODELS } from "../hosts/index";
 import { DEFAULT_SETTINGS } from "../settings/schema";
 import { $, clone, toast, el } from "./dom";
 import { renderPanel, renderSidebar } from "./tab-hosters";
 import { renderDownloadsSettings } from "./tab-downloads";
 import { formatJobStatus, loadHistoryTab } from "./tab-history";
-import { formatLogLine, loadLogsTab, renderLogEntry } from "./tab-logs";
+import { formatLogLine, loadLogsTab } from "./tab-logs";
 
 let settings: Settings;
 let selected: HosterId = "imagebam";
@@ -73,6 +73,10 @@ function switchDlSubTab(tab: DlSubTab): void {
     startPolling();
   } else {
     void loadLogsTab();
+    // Refresh logs every 5s from IDB (replaces the old MD_LOG broadcast which
+    // flooded 20K IPC messages during a crawl).
+    clearInterval(dlRefreshTimer);
+    dlRefreshTimer = setInterval(() => void loadLogsTab(), 5000);
   }
 }
 
@@ -356,19 +360,6 @@ async function init(): Promise<void> {
           itemsContainer.append(itemEl);
         }
       }
-    }
-
-    // ── Log entry → Logs tab ──
-    if (m["type"] === "MD_LOG" && activeDlSubTab === "logs") {
-      const logMsg = m as Partial<MDLogMessage>;
-      const entry = logMsg.entry;
-      if (!entry) return;
-      const container = $("dl-logs");
-      container.querySelector(".default-note")?.remove();
-      container.prepend(renderLogEntry(entry));
-      const countEl = $("log-count");
-      const prev = parseInt(countEl.textContent ?? "0") || 0;
-      countEl.textContent = `${prev + 1} entries`;
     }
   });
 
