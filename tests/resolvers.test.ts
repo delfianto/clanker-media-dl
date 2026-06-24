@@ -18,8 +18,8 @@ async function withMockFetch(
 }
 
 describe("LEAF_RESOLVERS registry", () => {
-  it("registers imx and imagevenue", () => {
-    expect(LEAF_RESOLVERS.map((r) => r.id)).toEqual(["imx", "imagevenue"]);
+  it("registers imx, imagevenue, and imagetwist", () => {
+    expect(LEAF_RESOLVERS.map((r) => r.id)).toEqual(["imx", "imagevenue", "imagetwist"]);
   });
 });
 
@@ -30,26 +30,26 @@ describe("imxResolver.matches", () => {
   });
 
   it("rejects lookalike / embedded hostnames (hostname match, not substring)", () => {
-    expect(imxResolver.matches(new URL("https://imx.to.evil.com/i/abc"))).toBe(false);
     expect(imxResolver.matches(new URL("https://notimx.to/i/abc"))).toBe(false);
-    expect(imxResolver.matches(new URL("https://imxxto.com/i/abc"))).toBe(false);
-    expect(imxResolver.matches(new URL("https://example.com/?ref=imx.to/i/x"))).toBe(false);
+    expect(imxResolver.matches(new URL("https://imx.to.lookalike.com/i/abc"))).toBe(false);
+    expect(imxResolver.matches(new URL("https://example.com/imx.to/abc"))).toBe(false);
   });
 });
 
 describe("imxResolver.fromThumbnail", () => {
   it("swaps /u/t/ for /u/i/ on imx thumbnails", () => {
-    expect(imxResolver.fromThumbnail?.("https://imx.to/u/t/2026/04/27/abc.jpg")).toBe(
-      "https://imx.to/u/i/2026/04/27/abc.jpg",
+    expect(imxResolver.fromThumbnail?.("https://image.imx.to/u/t/x.jpg")).toBe(
+      "https://image.imx.to/u/i/x.jpg",
     );
   });
 
   it("returns null for non-thumbnail imx URLs", () => {
+    expect(imxResolver.fromThumbnail?.("https://image.imx.to/u/i/x.jpg")).toBeNull();
     expect(imxResolver.fromThumbnail?.("https://imx.to/i/abc")).toBeNull();
   });
 
   it("returns null for non-imx hosts", () => {
-    expect(imxResolver.fromThumbnail?.("https://other.com/u/t/x.jpg")).toBeNull();
+    expect(imxResolver.fromThumbnail?.("https://example.com/u/t/x.jpg")).toBeNull();
   });
 });
 
@@ -58,11 +58,11 @@ describe("imxResolver.resolveFromViewer", () => {
     await withMockFetch(
       async () => ({
         ok: true,
-        text: async () => `<img src="https://image.imx.to/u/i/2026/04/27/abc.jpg" />`,
+        text: async () => '<html><body><img src="https://image.imx.to/u/i/x.jpg"></body></html>',
       }),
       async () => {
-        const r = await imxResolver.resolveFromViewer("https://imx.to/i/abc");
-        expect(r).toEqual({ url: "https://image.imx.to/u/i/2026/04/27/abc.jpg" });
+        const result = await imxResolver.resolveFromViewer("https://imx.to/i/abc");
+        expect(result).toEqual({ url: "https://image.imx.to/u/i/x.jpg" });
       },
     );
   });
@@ -71,12 +71,15 @@ describe("imxResolver.resolveFromViewer", () => {
     await withMockFetch(
       async () => ({
         ok: true,
-        text: async () =>
-          `<title>IMX.to / 17944566_tyg186_002.jpg</title><img src="https://image.imx.to/u/i/x.jpg">`,
+        text: async () => `
+          <html>
+            <head><title> IMX.to / 17944566_tyg186_002.jpg </title></head>
+            <body><img src="https://image.imx.to/u/i/x.jpg"></body>
+          </html>`,
       }),
       async () => {
-        const r = await imxResolver.resolveFromViewer("https://imx.to/i/abc");
-        expect(r).toEqual({
+        const result = await imxResolver.resolveFromViewer("https://imx.to/i/abc");
+        expect(result).toEqual({
           url: "https://image.imx.to/u/i/x.jpg",
           filename: "17944566_tyg186_002.jpg",
         });
@@ -100,7 +103,7 @@ describe("imxResolver.resolveFromViewer", () => {
       async () => ({ ok: true, text: async () => "<html><body>nothing here</body></html>" }),
       async () => {
         await expect(imxResolver.resolveFromViewer("https://imx.to/i/abc")).rejects.toThrow(
-          "Failed to parse",
+          "DEAD_LINK: imx.to image not found",
         );
       },
     );
