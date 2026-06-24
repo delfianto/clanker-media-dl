@@ -6,6 +6,7 @@ import type {
   MDListJobsResponse,
   MDDeleteJobRequest,
   MDCancelJobRequest,
+  MDResumeJobRequest,
 } from "../types/messages";
 import { crossOriginFetchBlob } from "./fetcher";
 import {
@@ -15,6 +16,9 @@ import {
   attemptDownload,
   deleteJob,
   cancelJob,
+  resumeJob,
+  cancelAllJobs,
+  resumeAllJobs,
 } from "./gallery";
 import { sanitizeFilename } from "./sanitize";
 
@@ -110,6 +114,19 @@ browser.runtime.onMessage.addListener((msg: unknown): Promise<AnyResponse> | und
   if (m["type"] === "MD_CANCEL_JOB" && typeof m["jobId"] === "string") {
     const req = m as unknown as MDCancelJobRequest;
     return cancelJob(req.jobId).then((): void => {});
+  }
+
+  if (m["type"] === "MD_RESUME_JOB" && typeof m["jobId"] === "string") {
+    const req = m as unknown as MDResumeJobRequest;
+    return resumeJob(req.jobId).then((): void => {});
+  }
+
+  if (m["type"] === "MD_STOP_ALL_JOBS") {
+    return cancelAllJobs().then((): void => {});
+  }
+
+  if (m["type"] === "MD_RESUME_ALL_JOBS") {
+    return resumeAllJobs().then((): void => {});
   }
 
   return undefined;

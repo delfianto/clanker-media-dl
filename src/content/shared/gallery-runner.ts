@@ -283,21 +283,21 @@ export function runGalleryAdapter(
         btnElement.innerHTML = loadingIcon;
         let lastJobId = "";
 
-        // Fetch and start each set job individually
-        await Promise.all(
+        // Fetch all sets' API data in parallel
+        const setResults = await Promise.all(
           jobItems.map(async (item) => {
             if (item.kind === "resolve-viewer" && item.viewerUrl.includes("/set/")) {
               try {
                 const setIdMatch = /\/set\/(\d+)/.exec(item.viewerUrl);
                 const setId = setIdMatch?.[1];
-                if (!setId) return;
+                if (!setId) return null;
 
                 const res = await fetch(`/api/0.2/set/${setId}`);
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
                 const data = await res.json();
 
                 const parsed = parseSet(data);
-                if (!parsed) return;
+                if (!parsed) return null;
 
                 const detectedSetName = deriveGalleryName(
                   parsed.site,
@@ -329,7 +329,6 @@ export function runGalleryAdapter(
 
                 if (setItems.length > 0) {
                   const setJobId = crypto.randomUUID();
-                  lastJobId = setJobId;
                   const req: MDGalleryStartRequest = {
                     type: "MD_GALLERY_START",
                     jobId: setJobId,
@@ -338,15 +337,29 @@ export function runGalleryAdapter(
                     items: setItems,
                     maxParallelImg: config.maxParallelImg,
                     maxParallelVid: config.maxParallelVid,
+                    postedAt: parsed.postedAt ?? undefined,
                   };
-                  window.postMessage(req, "*");
+                  return { req, postedAt: parsed.postedAt ?? 0 };
                 }
               } catch (err) {
                 console.error(`[md] failed to crawl set ${item.viewerUrl}:`, err);
               }
             }
+            return null;
           }),
         );
+
+        // Filter valid results and sort by postedAt descending (latest date first)
+        const validResults = setResults.filter(
+          (r): r is { req: MDGalleryStartRequest; postedAt: number } => r !== null,
+        );
+        validResults.sort((a, b) => b.postedAt - a.postedAt);
+
+        // Post messages sequentially
+        for (const res of validResults) {
+          window.postMessage(res.req, "*");
+          lastJobId = res.req.jobId;
+        }
 
         btnElement.innerHTML = doneIcon;
         return lastJobId;

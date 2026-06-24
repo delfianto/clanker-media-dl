@@ -454,6 +454,24 @@ function renderJobCard(job: DownloadJob): HTMLElement {
         });
     });
     headerRight.append(stopBtn);
+  } else if (job.status === "canceled" || job.status === "error") {
+    const resumeBtn = el("button", {
+      className: "job-resume-btn",
+      title: "Resume download",
+      textContent: "Resume",
+    });
+    resumeBtn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      void browser.runtime
+        .sendMessage({
+          type: "MD_RESUME_JOB",
+          jobId: job.jobId,
+        })
+        .then(() => {
+          void loadHistoryTab();
+        });
+    });
+    headerRight.append(resumeBtn);
   }
   headerRight.append(deleteBtn);
 
@@ -847,6 +865,18 @@ async function init(): Promise<void> {
     });
   });
 
+  $("btn-stop-all").addEventListener("click", () => {
+    void browser.runtime.sendMessage({ type: "MD_STOP_ALL_JOBS" }).then(() => {
+      void loadHistoryTab();
+    });
+  });
+
+  $("btn-resume-all").addEventListener("click", () => {
+    void browser.runtime.sendMessage({ type: "MD_RESUME_ALL_JOBS" }).then(() => {
+      void loadHistoryTab();
+    });
+  });
+
   // Live messages from the SW while the Downloads tab is open.
   browser.runtime.onMessage.addListener((msg: unknown) => {
     if (activeTab !== "downloads") return;
@@ -872,6 +902,64 @@ async function init(): Promise<void> {
       const stopBtn = card.querySelector<HTMLElement>(".job-stop-btn");
       if (stopBtn && st !== "running") {
         stopBtn.remove();
+
+        // Add Resume button on cancel/error
+        const headerRight = card.querySelector<HTMLElement>(".job-header-right");
+        if (headerRight && !card.querySelector(".job-resume-btn")) {
+          const resumeBtn = el("button", {
+            className: "job-resume-btn",
+            title: "Resume download",
+            textContent: "Resume",
+          });
+          resumeBtn.addEventListener("click", (event) => {
+            event.stopPropagation();
+            void browser.runtime
+              .sendMessage({
+                type: "MD_RESUME_JOB",
+                jobId: prog.jobId,
+              })
+              .then(() => {
+                void loadHistoryTab();
+              });
+          });
+          const deleteBtn = headerRight.querySelector(".job-delete-btn");
+          if (deleteBtn) {
+            headerRight.insertBefore(resumeBtn, deleteBtn);
+          } else {
+            headerRight.append(resumeBtn);
+          }
+        }
+      }
+      const resumeBtn = card.querySelector<HTMLElement>(".job-resume-btn");
+      if (resumeBtn && st === "running") {
+        resumeBtn.remove();
+
+        // Add Stop button on resume
+        const headerRight = card.querySelector<HTMLElement>(".job-header-right");
+        if (headerRight && !card.querySelector(".job-stop-btn")) {
+          const newStopBtn = el("button", {
+            className: "job-stop-btn",
+            title: "Stop/Cancel download",
+            textContent: "Stop",
+          });
+          newStopBtn.addEventListener("click", (event) => {
+            event.stopPropagation();
+            void browser.runtime
+              .sendMessage({
+                type: "MD_CANCEL_JOB",
+                jobId: prog.jobId,
+              })
+              .then(() => {
+                void loadHistoryTab();
+              });
+          });
+          const deleteBtn = headerRight.querySelector(".job-delete-btn");
+          if (deleteBtn) {
+            headerRight.insertBefore(newStopBtn, deleteBtn);
+          } else {
+            headerRight.append(newStopBtn);
+          }
+        }
       }
       const pctEl = card.querySelector<HTMLElement>(".job-pct");
       const total = prog.totalCount ?? 0;

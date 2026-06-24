@@ -85,7 +85,15 @@ async function upsertJob(job: DownloadJob): Promise<void> {
 }
 
 export async function listJobs(): Promise<DownloadJob[]> {
-  return readJobs();
+  const jobs = await readJobs();
+  return jobs.sort((a, b) => {
+    if (a.postedAt !== undefined && b.postedAt !== undefined) {
+      if (b.postedAt !== a.postedAt) {
+        return b.postedAt - a.postedAt;
+      }
+    }
+    return b.startedAt - a.startedAt;
+  });
 }
 
 export async function deleteJob(jobId: string): Promise<void> {
@@ -111,6 +119,64 @@ export async function cancelJob(jobId: string): Promise<void> {
 
     broadcastProgress(job);
     void appendLog("warn", "Job cancelled by user", jobId);
+  }
+}
+
+export async function cancelAllJobs(): Promise<void> {
+  const jobs = await readJobs();
+  let changed = false;
+  for (const job of jobs) {
+    if (job.status === "running") {
+      job.status = "canceled";
+      changed = true;
+
+      // Cancel all active downloads in browser for this job
+      for (const [downloadId, pending] of pendingDownloads.entries()) {
+        if (pending.jobId === job.jobId) {
+          browser.downloads.cancel(downloadId).catch(() => {});
+        }
+      }
+      broadcastProgress(job);
+      void appendLog("warn", "Job cancelled by user (global stop)", job.jobId);
+    }
+  }
+  if (changed) {
+    await browser.storage.local.set({ [JOBS_KEY]: jobs });
+  }
+}
+
+export async function resumeJob(jobId: string): Promise<void> {
+  const jobs = await readJobs();
+  const job = jobs.find((j) => j.jobId === jobId);
+  if (job && (job.status === "canceled" || job.status === "error")) {
+    const req: MDGalleryStartRequest = {
+      type: "MD_GALLERY_START",
+      jobId: job.jobId,
+      hosterId: job.hosterId,
+      subfolder: job.subfolder,
+      items: job.originalItems || [],
+      maxParallelImg: job.maxParallelImg ?? DEFAULT_SETTINGS.maxParallelImg,
+      maxParallelVid: job.maxParallelVid ?? DEFAULT_SETTINGS.maxParallelVid,
+      postedAt: job.postedAt,
+    };
+
+    job.status = "running";
+    job.startedAt = Date.now(); // reset started time so it's fresh
+    await upsertJob(job);
+    broadcastProgress(job);
+
+    void startGalleryJob(req).catch((err) => {
+      console.error(`[md] failed to resume job ${jobId}:`, err);
+    });
+  }
+}
+
+export async function resumeAllJobs(): Promise<void> {
+  const jobs = await readJobs();
+  for (const job of jobs) {
+    if (job.status === "canceled" || job.status === "error") {
+      void resumeJob(job.jobId).catch(() => {});
+    }
   }
 }
 
@@ -529,13 +595,16 @@ export async function startGalleryJob(req: MDGalleryStartRequest): Promise<void>
     failedCount: 0,
     status: "running",
     startedAt: Date.now(),
+    originalItems: req.items,
+    maxParallelImg: req.maxParallelImg,
+    maxParallelVid: req.maxParallelVid,
+    postedAt: req.postedAt,
     items: req.items.map((item) => {
       const displayName = item.kind === "resolve-viewer" ? item.viewerUrl : item.imageUrl;
       let alreadyDownloaded = false;
       let historicalFilename = "";
 
       for (const hj of historyJobs) {
-        if (hj.jobId === req.jobId) continue;
         if (hj.subfolder !== req.subfolder) continue;
         const matched = hj.items?.find(
           (hi) => hi.displayName === displayName && hi.status === "done",

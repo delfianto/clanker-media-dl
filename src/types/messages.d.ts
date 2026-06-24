@@ -67,6 +67,7 @@ export type MDGalleryStartRequest = {
   items: GalleryJobItem[];
   maxParallelImg: number;
   maxParallelVid: number;
+  postedAt?: number | undefined;
 };
 
 // SW → options page (via chrome.runtime.sendMessage — bypasses MAIN/ISOLATED relay).
@@ -94,6 +95,22 @@ export type MDDeleteJobRequest = {
 export type MDCancelJobRequest = {
   type: "MD_CANCEL_JOB";
   jobId: string;
+};
+
+// Options page → SW: request resuming of a specific cancelled/errored job.
+export type MDResumeJobRequest = {
+  type: "MD_RESUME_JOB";
+  jobId: string;
+};
+
+// Options page → SW: request global stop of all running/queued jobs.
+export type MDStopAllJobsRequest = {
+  type: "MD_STOP_ALL_JOBS";
+};
+
+// Options page → SW: request global resume of all cancelled/errored jobs.
+export type MDResumeAllJobsRequest = {
+  type: "MD_RESUME_ALL_JOBS";
 };
 
 // SW → options page: a single log entry to append live in the Logs tab.
