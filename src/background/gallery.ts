@@ -248,6 +248,23 @@ export async function attemptDownload(
 // items by media type without losing track of which progress slot they own.
 type QueueEntry = { item: GalleryJobItem; origIdx: number };
 
+async function createSubfolder(subfolder: string): Promise<void> {
+  try {
+    const downloadId = await browser.downloads.download({
+      url: "data:text/plain;base64,",
+      filename: `${subfolder}/.md-keep`,
+      conflictAction: "overwrite",
+    });
+    // Wait for the native file write to finish so the directory is guaranteed to exist
+    await trackDownload(downloadId, "");
+    // Clean up the placeholder file and its history entry silently
+    await browser.downloads.removeFile(downloadId).catch(() => {});
+    await browser.downloads.erase({ id: downloadId }).catch(() => {});
+  } catch (err) {
+    console.warn(`[md] createSubfolder failed for ${subfolder}:`, err);
+  }
+}
+
 async function runQueue(
   job: DownloadJob,
   entries: QueueEntry[],
@@ -255,6 +272,17 @@ async function runQueue(
   maxRetries: number,
   skipExisting: boolean,
 ): Promise<void> {
+  if (job.subfolder && entries.length > 0) {
+    // Chromium on Linux has a severe VFS bug: concurrent downloads to a new
+    // directory trigger a mkdir race condition that causes Heavy I/O blocking
+    // (browser stutter) and causes Chrome to maliciously strip the subfolder
+    // and dump all the files into the root ~/Downloads directory instead.
+    // By synchronously pre-creating the folder with a dummy file before starting
+    // the concurrent workers, Chromium sees the directory already exists and
+    // skips the buggy mkdir race entirely.
+    await createSubfolder(job.subfolder);
+  }
+
   let cursor = 0;
 
   async function runOne(): Promise<void> {
@@ -412,15 +440,7 @@ async function runQueue(
 
   const slots = Math.min(entries.length, maxParallel);
   if (slots > 0) {
-    await Promise.all(
-      Array.from({ length: slots }, async (_, i) => {
-        // Stagger worker startup by 50ms each to avoid Chrome's internal race
-        // condition on Linux where concurrent downloads to a new directory
-        // cause mkdir collisions, leading Chrome to dump files in ~/Downloads.
-        if (i > 0) await sleep(i * 50);
-        return runOne();
-      }),
-    );
+    await Promise.all(Array.from({ length: slots }, () => runOne()));
   }
 }
 
