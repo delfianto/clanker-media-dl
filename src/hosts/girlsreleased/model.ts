@@ -25,6 +25,23 @@ function collectSetAnchorsFromRoot(root: Document | Element): GalleryJobItem[] {
   return items;
 }
 
+// The girlsreleased SPA gates some sites (e.g. ftvgirls.com) behind a logged-in
+// session: it sends the stored access token as an "x-token" header on its API
+// calls, and the API returns an empty set list without it. Public sites
+// (hegre.com) work token-less. Mirror the SPA so the extension can discover and
+// crawl token-gated sites too. This runs in the page's MAIN world, so
+// localStorage is the girlsreleased session's own; guarded with typeof for the
+// SW bundle (this module is also imported there, where localStorage is absent).
+function grAuthHeaders(): Record<string, string> {
+  try {
+    if (typeof localStorage === "undefined") return {};
+    const token = localStorage.getItem("accessToken");
+    return token ? { "x-token": token } : {};
+  } catch {
+    return {};
+  }
+}
+
 // Fetch one listing page, retrying transient failures (network "Failed to
 // fetch", 429 rate-limit, 5xx) with exponential backoff. Returns null only
 // after genuinely giving up — a non-retryable 4xx or exhausted retries.
@@ -33,7 +50,7 @@ function collectSetAnchorsFromRoot(root: Document | Element): GalleryJobItem[] {
 async function fetchSetsPage(url: string, maxRetries = 3): Promise<{ sets?: unknown[] } | null> {
   for (let attempt = 0; ; attempt++) {
     try {
-      const res = await fetch(url);
+      const res = await fetch(url, { headers: grAuthHeaders() });
       if (res.ok) return (await res.json()) as { sets?: unknown[] };
       const retryable = res.status === 429 || res.status >= 500;
       if (!retryable || attempt >= maxRetries) {
@@ -159,7 +176,7 @@ async function crawlGirlsreleasedSet(
   const setId = setIdMatch?.[1];
   if (!setId) return null;
 
-  const res = await fetch(`/api/0.2/set/${setId}`);
+  const res = await fetch(`/api/0.2/set/${setId}`, { headers: grAuthHeaders() });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
 
