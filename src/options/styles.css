@@ -628,6 +628,36 @@ input[type="number"].narrow {
   gap: 12px;
 }
 
+.job-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.job-delete-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 18px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 20px;
+  width: 20px;
+}
+
+.job-delete-btn:hover {
+  color: var(--danger);
+  background: var(--danger-dim);
+}
+
 .job-title {
   font-size: 14px;
   font-weight: 700;

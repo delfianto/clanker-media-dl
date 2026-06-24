@@ -81,6 +81,12 @@ export async function listJobs(): Promise<DownloadJob[]> {
   return readJobs();
 }
 
+export async function deleteJob(jobId: string): Promise<void> {
+  const jobs = await readJobs();
+  const filtered = jobs.filter((j) => j.jobId !== jobId);
+  await browser.storage.local.set({ [JOBS_KEY]: filtered });
+}
+
 // ── Progress broadcast ───────────────────────────────────────────────────────
 
 function broadcastProgress(job: DownloadJob): void {
@@ -337,6 +343,12 @@ async function runQueue(
       const item = entry.item;
       const idx = entry.origIdx;
 
+      if (job.items?.[idx]?.status === "done") {
+        const displayName = item.kind === "resolve-viewer" ? item.viewerUrl : item.imageUrl;
+        void appendLog("debug", `Skipped (already downloaded): ${displayName}`, job.jobId);
+        continue;
+      }
+
       if (job.items?.[idx]) {
         job.items[idx].status = "running";
         await upsertJob(job);
@@ -432,6 +444,8 @@ async function runQueue(
 // ── Public API ───────────────────────────────────────────────────────────────
 
 export async function startGalleryJob(req: MDGalleryStartRequest): Promise<void> {
+  const historyJobs = await readJobs();
+
   const job: DownloadJob = {
     jobId: req.jobId,
     hosterId: req.hosterId,
@@ -441,12 +455,34 @@ export async function startGalleryJob(req: MDGalleryStartRequest): Promise<void>
     failedCount: 0,
     status: "running",
     startedAt: Date.now(),
-    items: req.items.map((item) => ({
-      displayName: item.kind === "resolve-viewer" ? item.viewerUrl : item.imageUrl,
-      filename: item.filename,
-      status: "pending" as const,
-    })),
+    items: req.items.map((item) => {
+      const displayName = item.kind === "resolve-viewer" ? item.viewerUrl : item.imageUrl;
+      let alreadyDownloaded = false;
+      let historicalFilename = "";
+
+      for (const hj of historyJobs) {
+        if (hj.jobId === req.jobId) continue;
+        if (hj.subfolder !== req.subfolder) continue;
+        const matched = hj.items?.find(
+          (hi) => hi.displayName === displayName && hi.status === "done",
+        );
+        if (matched) {
+          alreadyDownloaded = true;
+          historicalFilename = matched.filename;
+          break;
+        }
+      }
+
+      return {
+        displayName,
+        filename: historicalFilename || item.filename,
+        status: alreadyDownloaded ? ("done" as const) : ("pending" as const),
+      };
+    }),
   };
+
+  job.completedCount = job.items?.filter((item) => item.status === "done").length ?? 0;
+
   await upsertJob(job);
   broadcastProgress(job);
 

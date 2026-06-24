@@ -406,13 +406,33 @@ function renderJobCard(job: DownloadJob): HTMLElement {
     }
   }
 
+  const deleteBtn = el("button", {
+    className: "job-delete-btn",
+    title: "Remove from history",
+    textContent: "×",
+  });
+  deleteBtn.addEventListener("click", (event) => {
+    event.stopPropagation();
+    void browser.runtime
+      .sendMessage({
+        type: "MD_DELETE_JOB",
+        jobId: job.jobId,
+      })
+      .then(() => {
+        void loadHistoryTab();
+      });
+  });
+
   const card = el(
     "div",
     { className: isExpanded ? "job-card expanded" : "job-card", id: `job-${job.jobId}` },
     [
       el("div", { className: "job-header" }, [
         el("span", { className: "job-title", textContent: job.subfolder || job.hosterId }),
-        el("span", { className: `job-status ${statusClass}`, textContent: formatJobStatus(job) }),
+        el("div", { className: "job-header-right" }, [
+          el("span", { className: `job-status ${statusClass}`, textContent: formatJobStatus(job) }),
+          deleteBtn,
+        ]),
       ]),
       progress,
       el("div", { className: "job-meta" }, [
@@ -786,6 +806,7 @@ async function init(): Promise<void> {
   });
 
   $("btn-clear-history").addEventListener("click", () => {
+    if (!confirm("Clear all download history?")) return;
     void browser.storage.local.set({ downloadJobs: [] }).then(() => {
       expandedJobIds.clear();
       $("history-count").textContent = "0 jobs";
