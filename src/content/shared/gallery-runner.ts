@@ -299,7 +299,12 @@ export function runGalleryAdapter(
                 const parsed = parseSet(data);
                 if (!parsed) return;
 
-                const detectedSetName = deriveGalleryName(parsed.site, parsed.model, parsed.name);
+                const detectedSetName = deriveGalleryName(
+                  parsed.site,
+                  parsed.model,
+                  parsed.name,
+                  parsed.postedAt,
+                );
                 const setSubfolder = detectedSetName ? buildSubfolder(detectedSetName, config) : "";
 
                 for (const file of parsed.files) {
