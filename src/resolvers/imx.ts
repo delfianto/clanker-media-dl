@@ -27,7 +27,7 @@ export const imxResolver: LeafResolver = {
       throw new Error(`DEAD_LINK: imx.to image not found — ${viewerUrl}`);
     }
 
-    const titleMatch = html.match(/<title>(?:IMX\.to\s*\/)?\s*([^<]+)<\/title>/i);
+    const titleMatch = html.match(/<title>\s*(?:IMX\.to\s*\/)?\s*([^<]+)<\/title>/i);
     const filename = titleMatch?.[1]?.trim();
 
     return {
