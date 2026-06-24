@@ -219,6 +219,12 @@ export function renderJobCard(
 
 let currentPage = 1;
 const PAGE_SIZE = 50;
+let currentFilter: "all" | "done" | "partial" | "running" = "all";
+
+export function setHistoryFilter(filter: "all" | "done" | "partial" | "running"): void {
+  currentFilter = filter;
+  currentPage = 1;
+}
 
 export async function loadHistoryTab(expandedJobIds: Set<string>): Promise<void> {
   const jobsContainer = $("dl-jobs");
@@ -227,22 +233,38 @@ export async function loadHistoryTab(expandedJobIds: Set<string>): Promise<void>
   }
   try {
     const res = (await browser.runtime.sendMessage({ type: "MD_LIST_JOBS" })) as MDListJobsResponse;
-    $("history-count").textContent = `${res.jobs.length} jobs`;
+    let jobs = res.jobs;
+    if (currentFilter !== "all") {
+      jobs = jobs.filter((j) => {
+        if (currentFilter === "running") return j.status === "running";
+        if (currentFilter === "done")
+          return j.status === "done" && (j.failedCount === 0 || !j.failedCount);
+        if (currentFilter === "partial")
+          return (
+            j.status === "error" ||
+            j.status === "canceled" ||
+            (j.status === "done" && j.failedCount! > 0)
+          );
+        return true;
+      });
+    }
 
-    if (res.jobs.length === 0) {
+    $("history-count").textContent = `${jobs.length} jobs`;
+
+    if (jobs.length === 0) {
       jobsContainer.replaceChildren(
-        el("p", { className: "default-note", textContent: "No downloads yet." }),
+        el("p", { className: "default-note", textContent: "No downloads found for this filter." }),
       );
       $("history-pagination").replaceChildren();
       return;
     }
 
-    const totalPages = Math.ceil(res.jobs.length / PAGE_SIZE);
+    const totalPages = Math.ceil(jobs.length / PAGE_SIZE);
     if (currentPage > totalPages) currentPage = Math.max(1, totalPages);
 
     const startIndex = (currentPage - 1) * PAGE_SIZE;
     const endIndex = startIndex + PAGE_SIZE;
-    const pagedJobs = res.jobs.slice(startIndex, endIndex);
+    const pagedJobs = jobs.slice(startIndex, endIndex);
 
     // Map existing job cards so we can preserve their inner state (like scroll position)
     const existingCards = new Map<string, HTMLElement>();
