@@ -12,7 +12,7 @@ describe("JPG6 Hoster Model", () => {
     const collectAllItems = jpg6Model.galleryConfig?.collectAllItems;
     expect(collectAllItems).toBeDefined();
 
-    it("extracts images from data-object attributes", () => {
+    it("extracts images from data-object attributes", async () => {
       const itemData = {
         image: {
           url: "https://simp6.cuckcapital.cr/images4/IMG_49747b256daad3c59a03.jpg",
@@ -38,7 +38,7 @@ describe("JPG6 Hoster Model", () => {
         },
       };
 
-      const items = collectAllItems!(mockScope as unknown as Document);
+      const items = await collectAllItems!(mockScope as unknown as Document);
       expect(items).toHaveLength(1);
       expect(items[0]).toEqual({
         kind: "resolved",

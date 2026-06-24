@@ -72,7 +72,7 @@ export function runGalleryAdapter(
     const useFallback = config.useFallbackName ?? false;
     let items: GalleryJobItem[];
     if (gc!.collectAllItems) {
-      items = gc!.collectAllItems();
+      items = await gc!.collectAllItems();
     } else {
       switch (gc!.imageSource.strategy) {
         case "thumbnail-transform":

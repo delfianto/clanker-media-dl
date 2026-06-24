@@ -124,12 +124,15 @@ export type GalleryConfig = {
   albumIdFromPath: string; // regex on location.pathname — group 1 = album id for subfolder
   imageSource: GalleryImageSource;
   // Optional: collect all gallery items from MAIN world. For hosters where items
-  // are loaded dynamically via JS (e.g. Bunkr's window.albumFiles), this bypasses
-  // DOM-scraping strategies and returns the complete item list directly.
-  // Runs in MAIN world so it has full access to page JS globals.
+  // are loaded dynamically via JS (e.g. Bunkr's window.albumFiles, or
+  // girlsreleased's paginated API), this bypasses DOM-scraping strategies and
+  // returns the complete item list directly. May be async — e.g. girlsreleased
+  // paginates the /api/0.3/sets/... endpoint to discover every set across all
+  // pages, not just the ones the SPA has rendered into the DOM.
+  // Runs in MAIN world so it has full access to page JS globals (incl. fetch).
   // When root is provided, queries against it instead of document (used by
   // fetchAdditionalItems for paginated pages).
-  collectAllItems?: (root?: Document | Element) => GalleryJobItem[];
+  collectAllItems?: (root?: Document | Element) => GalleryJobItem[] | Promise<GalleryJobItem[]>;
   // Optional SW-side hooks (see type docs above).
   extractFromViewer?: ExtractFromViewer;
   resolveUrl?: ResolveUrl;

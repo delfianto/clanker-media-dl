@@ -5,41 +5,122 @@ import { resolveLeaf, thumbnailToFull } from "../../resolvers/index";
 import { parseSet, deriveGalleryName, compareSetsByDateAndSubfolder } from "./api";
 import { buildSubfolder } from "../../content/shared/collector";
 
-function collectGirlsreleasedItems(root?: Document | Element): GalleryJobItem[] {
-  const isSitePage =
-    !root && typeof window !== "undefined" && window.location.pathname.includes("/site/");
-
-  if (isSitePage) {
-    // isSitePage implies !root, so the scope is always the live document.
-    const anchors = Array.from(document.querySelectorAll<HTMLAnchorElement>("a"));
-    const items: GalleryJobItem[] = [];
-    const visited = new Set<string>();
-
-    for (const anchor of anchors) {
-      const href = anchor.href;
-      if (!href) continue;
-
-      const isSetLink = /\/set\/[^/?]+/.test(href);
-      if (isSetLink && !visited.has(href)) {
-        visited.add(href);
-        items.push({
-          kind: "resolve-viewer",
-          viewerUrl: href,
-          filename: "set_placeholder",
-        });
-      }
+function collectSetAnchorsFromRoot(root: Document | Element): GalleryJobItem[] {
+  const anchors = Array.from(root.querySelectorAll<HTMLAnchorElement>("a"));
+  const items: GalleryJobItem[] = [];
+  const visited = new Set<string>();
+  for (const anchor of anchors) {
+    const href = anchor.href;
+    if (!href) continue;
+    const isSetLink = /\/set\/[^/?]+/.test(href);
+    if (isSetLink && !visited.has(href)) {
+      visited.add(href);
+      items.push({
+        kind: "resolve-viewer",
+        viewerUrl: href,
+        filename: "set_placeholder",
+      });
     }
-    console.log(`[md] GirlsReleased: found ${items.length} set pages to crawl`);
-    return items;
+  }
+  return items;
+}
+
+// Paginate the girlsreleased listing API to discover every set for a site (and
+// optionally a specific model), not just the first page the SPA rendered into
+// the DOM. The SPA only fetches page 1 on initial load and gates further pages
+// behind a JS "Load More" button (no real <a href> pagination links), so DOM
+// scraping alone would miss every set past page 1.
+//
+// Endpoint (matches the SPA's own Sg builder + useNgApi path):
+//   /api/0.3/sets/site/{site}/sort/date/page/{n}
+//   /api/0.3/sets/site/{site}/model/{modelId}/sort/date/page/{n}
+//
+// The API returns up to 101 entries per non-final page. The 101st entry is a
+// peek-ahead sentinel that duplicates page N+1's first entry — the SPA drops
+// it client-side (sets.slice(0,-1) when length>100). We dedupe by set id so the
+// overlap never produces a duplicate crawl item. A page returning ≤100 entries
+// (or an empty sets array) signals the last page and stops pagination.
+async function collectAllSetsViaApi(site: string, modelId?: string): Promise<GalleryJobItem[]> {
+  const base = modelId
+    ? `/api/0.3/sets/site/${encodeURIComponent(site)}/model/${encodeURIComponent(modelId)}/sort/date/page/`
+    : `/api/0.3/sets/site/${encodeURIComponent(site)}/sort/date/page/`;
+
+  const items: GalleryJobItem[] = [];
+  const seenIds = new Set<number>();
+  const MAX_PAGES = 200; // safety cap against runaway pagination
+
+  for (let page = 1; page <= MAX_PAGES; page++) {
+    let data: { sets?: unknown[] };
+    try {
+      const res = await fetch(`${base}${page}`);
+      if (!res.ok) {
+        console.warn(
+          `[md] GirlsReleased: API page ${page} returned HTTP ${res.status}, stopping pagination`,
+        );
+        break;
+      }
+      data = await res.json();
+    } catch (err) {
+      console.warn(
+        `[md] GirlsReleased: failed to fetch API page ${page}, stopping pagination:`,
+        err,
+      );
+      break;
+    }
+
+    const sets = data.sets;
+    if (!Array.isArray(sets) || sets.length === 0) break;
+
+    for (const entry of sets) {
+      if (!Array.isArray(entry)) continue;
+      const rawId = entry[0];
+      const id = typeof rawId === "number" ? rawId : Number(rawId);
+      if (!Number.isFinite(id) || seenIds.has(id)) continue;
+      seenIds.add(id);
+      items.push({
+        kind: "resolve-viewer",
+        viewerUrl: `https://girlsreleased.com/set/${id}`,
+        filename: "set_placeholder",
+      });
+    }
+
+    if (sets.length <= 100) break; // last page
   }
 
-  // Direct set page — emit a single self-referential item to trigger set expansion
-  const urlToUse = !root ? window.location.href : "";
-  if (urlToUse && urlToUse.includes("/set/")) {
+  console.log(`[md] GirlsReleased: discovered ${items.length} sets via API pagination for ${site}`);
+  return items;
+}
+
+async function collectGirlsreleasedItems(root?: Document | Element): Promise<GalleryJobItem[]> {
+  // Root-provided path: HTML-pagination fallback (used by fetchAdditionalItems
+  // when collectPageUrls finds real pagination links). The girlsreleased SPA
+  // drives pagination via a JS "Load More" button rather than real <a href>
+  // links, so this path is rarely hit in practice — but kept for safety.
+  if (root) {
+    return collectSetAnchorsFromRoot(root);
+  }
+
+  if (typeof window === "undefined") return [];
+
+  const path = window.location.pathname;
+
+  // /site/{site}[/model/{id}/{name}] — paginate the API to discover ALL sets.
+  const siteMatch = /^\/site\/([^/]+)(?:\/model\/([^/]+))?/.exec(path);
+  if (siteMatch) {
+    const [, site, modelId] = siteMatch;
+    // siteMatch[1] is always present on a successful match (the regex requires
+    // at least one non-slash char), but noUncheckedIndexedAccess types it as
+    // string | undefined — guard to satisfy the type and stay honest.
+    if (site) return collectAllSetsViaApi(site, modelId);
+  }
+
+  // Direct /set/NNN page — emit a single self-referential item to trigger set
+  // expansion via the crawl hook (crawlGirlsreleasedSet below).
+  if (path.includes("/set/")) {
     return [
       {
         kind: "resolve-viewer",
-        viewerUrl: urlToUse,
+        viewerUrl: window.location.href,
         filename: "set_placeholder",
       },
     ];

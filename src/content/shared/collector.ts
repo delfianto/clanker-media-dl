@@ -147,7 +147,7 @@ export async function fetchAdditionalItems(
       const doc = parser.parseFromString(html, "text/html");
       let pageItems: GalleryJobItem[] = [];
       if (gc.collectAllItems) {
-        pageItems = gc.collectAllItems(doc);
+        pageItems = await gc.collectAllItems(doc);
       } else {
         switch (gc.imageSource.strategy) {
           case "thumbnail-transform":
