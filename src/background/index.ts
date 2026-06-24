@@ -4,9 +4,16 @@ import type {
   MDFetchBlobResponse,
   MDGalleryStartRequest,
   MDListJobsResponse,
+  MDDeleteJobRequest,
 } from "../types/messages";
 import { crossOriginFetchBlob } from "./fetcher";
-import { startGalleryJob, listJobs, resumeRunningJobs, attemptDownload } from "./gallery";
+import {
+  startGalleryJob,
+  listJobs,
+  resumeRunningJobs,
+  attemptDownload,
+  deleteJob,
+} from "./gallery";
 import { sanitizeFilename } from "./sanitize";
 
 // Recover any jobs that were mid-flight when the SW was last terminated.
@@ -91,6 +98,11 @@ browser.runtime.onMessage.addListener((msg: unknown): Promise<AnyResponse> | und
 
   if (m["type"] === "MD_LIST_JOBS") {
     return listJobs().then((jobs): MDListJobsResponse => ({ jobs }));
+  }
+
+  if (m["type"] === "MD_DELETE_JOB" && typeof m["jobId"] === "string") {
+    const req = m as unknown as MDDeleteJobRequest;
+    return deleteJob(req.jobId).then((): void => {});
   }
 
   return undefined;

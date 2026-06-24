@@ -84,6 +84,12 @@ export type MDJobProgressMessage = {
 export type MDListJobsRequest = { type: "MD_LIST_JOBS" };
 export type MDListJobsResponse = { jobs: DownloadJob[] };
 
+// Options page → SW: request deletion of a specific job from history.
+export type MDDeleteJobRequest = {
+  type: "MD_DELETE_JOB";
+  jobId: string;
+};
+
 // SW → options page: a single log entry to append live in the Logs tab.
 export type MDLogMessage = { type: "MD_LOG"; entry: DownloadLog };
 
