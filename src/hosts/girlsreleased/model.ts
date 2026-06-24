@@ -25,13 +25,7 @@ function collectSetAnchorsFromRoot(root: Document | Element): GalleryJobItem[] {
   return items;
 }
 
-// The girlsreleased SPA gates some sites (e.g. ftvgirls.com) behind a logged-in
-// session: it sends the stored access token as an "x-token" header on its API
-// calls, and the API returns an empty set list without it. Public sites
-// (hegre.com) work token-less. Mirror the SPA so the extension can discover and
-// crawl token-gated sites too. This runs in the page's MAIN world, so
-// localStorage is the girlsreleased session's own; guarded with typeof for the
-// SW bundle (this module is also imported there, where localStorage is absent).
+// Extract SPA authentication token from localStorage to crawl logged-in sites.
 function grAuthHeaders(): Record<string, string> {
   try {
     if (typeof localStorage === "undefined") return {};
@@ -42,11 +36,7 @@ function grAuthHeaders(): Record<string, string> {
   }
 }
 
-// Fetch one listing page, retrying transient failures (network "Failed to
-// fetch", 429 rate-limit, 5xx) with exponential backoff. Returns null only
-// after genuinely giving up — a non-retryable 4xx or exhausted retries.
-// Without this, a single transient blip on page N aborted ALL pagination and
-// silently truncated set discovery to whatever pages had loaded so far.
+// Fetch listing page with exponential backoff for transient failures to prevent crawl truncation.
 async function fetchSetsPage(url: string, maxRetries = 3): Promise<{ sets?: unknown[] } | null> {
   for (let attempt = 0; ; attempt++) {
     try {
@@ -67,21 +57,7 @@ async function fetchSetsPage(url: string, maxRetries = 3): Promise<{ sets?: unkn
   }
 }
 
-// Paginate the girlsreleased listing API to discover every set for a site (and
-// optionally a specific model), not just the first page the SPA rendered into
-// the DOM. The SPA only fetches page 1 on initial load and gates further pages
-// behind a JS "Load More" button (no real <a href> pagination links), so DOM
-// scraping alone would miss every set past page 1.
-//
-// Endpoint (matches the SPA's own Sg builder + useNgApi path):
-//   /api/0.3/sets/site/{site}/sort/date/page/{n}
-//   /api/0.3/sets/site/{site}/model/{modelId}/sort/date/page/{n}
-//
-// The API returns up to 101 entries per non-final page. The 101st entry is a
-// peek-ahead sentinel that duplicates page N+1's first entry — the SPA drops
-// it client-side (sets.slice(0,-1) when length>100). We dedupe by set id so the
-// overlap never produces a duplicate crawl item. A page returning ≤100 entries
-// (or an empty sets array) signals the last page and stops pagination.
+// Paginate the API (up to 100 deduplicated sets per page) to bypass the SPA's infinite scroll limits.
 async function collectAllSetsViaApi(site: string, modelId?: string): Promise<GalleryJobItem[]> {
   const base = modelId
     ? `/api/0.3/sets/site/${encodeURIComponent(site)}/model/${encodeURIComponent(modelId)}/sort/date/page/`
@@ -135,22 +111,17 @@ async function collectGirlsreleasedItems(root?: Document | Element): Promise<Gal
   const siteMatch = /^\/site\/([^/]+)(?:\/model\/([^/]+))?/.exec(path);
   if (siteMatch) {
     const [, site, modelId] = siteMatch;
-    // siteMatch[1] is always present on a successful match (the regex requires
-    // at least one non-slash char), but noUncheckedIndexedAccess types it as
-    // string | undefined — guard to satisfy the type and stay honest.
+    // Guard site match for TS strictness.
     if (site) {
       const items = await collectAllSetsViaApi(site, modelId);
       if (items.length > 0) {
         return items;
       }
 
-      // If the API returns nothing, it may be a token-gated site and our token
-      // extraction failed (e.g., token name changed in local storage).
-      // Fallback to scraping the DOM so the user at least gets page 1's sets.
+      // Fallback to DOM scraping if API returns nothing (e.g. failed auth token extraction for gated site).
       console.warn(`[md] API returned 0 sets for ${site}, falling back to DOM scraping`);
 
-      // SPA race condition: React might still be showing the OLD site's sets.
-      // Poll the DOM until we see the new site's name on the page somewhere.
+      // Poll DOM to bypass React SPA navigation race conditions.
       const siteLower = site.toLowerCase();
       for (let i = 0; i < 20; i++) {
         if (document.body.textContent?.toLowerCase().includes(siteLower)) {
@@ -179,9 +150,7 @@ async function collectGirlsreleasedItems(root?: Document | Element): Promise<Gal
 }
 
 // ── Crawl hook ───────────────────────────────────────────────────────────────
-// All girlsreleased-specific crawl knowledge lives here, not in the shared
-// gallery runner. The shared runner calls isCrawlItem to detect crawl items,
-// crawlItem to expand each one, and sortCrawlResults to order the results.
+// GirlsReleased-specific crawl expansion logic.
 
 function isGirlsreleasedSetItem(item: GalleryJobItem): boolean {
   return item.kind === "resolve-viewer" && item.viewerUrl.includes("/set/");

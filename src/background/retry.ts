@@ -1,12 +1,4 @@
-// Retry helper for transient *network* failures — HTTP 5xx, fetch/network
-// errors, aborts. Used by the gallery viewer-page GET (fetchWithRetry) and the
-// resolveFromViewer hook path, so hoster-specific resolution (imx.to POST,
-// imagevenue interstitial) survives transient blips under load instead of
-// failing the item on the first hiccup.
-//
-// NOTE: distinct from media-util's isTransientError, which classifies
-// browser.downloads interruption codes (SERVER_FAILED, NETWORK_TIMEOUT, …) at
-// the download stage. This one classifies fetch-side errors during resolution.
+// Retry helper for transient *network* failures (fetch/resolution stage).
 
 export function isTransientFetchError(err: unknown): boolean {
   const msg = String(err);
@@ -19,9 +11,7 @@ export type RetryOptions = {
   onRetry?: (attempt: number, backoffMs: number) => void;
 };
 
-// Run `fn`, retrying with exponential backoff while it throws a transient fetch
-// error. Non-transient errors (parse failures, HTTP 4xx) reject immediately.
-// Rejects with the last error once retries are exhausted.
+// Retry function with exponential backoff for transient errors.
 export async function withRetry<T>(fn: () => Promise<T>, opts: RetryOptions = {}): Promise<T> {
   const maxRetries = opts.maxRetries ?? 3;
   const baseDelayMs = opts.baseDelayMs ?? 1000;

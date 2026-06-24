@@ -12,11 +12,7 @@ export function basenameFromUrl(url: string): string {
   }
 }
 
-// Build the subfolder path for a gallery download. When autoFolderPerAlbum is
-// on, the album name is sanitized and appended to the download directory.
-// Exported here (not in gallery-runner.ts) so that per-hoster crawl hooks can
-// use it without importing from gallery-runner (which would create a circular
-// dependency: gallery-runner → ALL_MODELS → hoster model → gallery-runner).
+// Build subfolder path for gallery downloads (exported here to avoid circular dependencies with hoster models).
 export function buildSubfolder(albumName: string, config: MDConfig): string {
   if (!config.autoFolderPerAlbum) return config.downloadDirectory;
   const safeName = albumName
