@@ -35,6 +35,9 @@ export function activateGallery(_model: HosterModel, ctx: GalleryCtx): void {
       vertical-align: middle;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       transition: all 0.2s ease-in-out;
+      white-space: nowrap;
+      max-width: none;
+      min-width: max-content;
     }
     .md-girlsreleased-gallery-btn:hover:not(.loading) {
       transform: translateY(-2px);

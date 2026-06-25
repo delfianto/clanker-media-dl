@@ -17,6 +17,7 @@ export function injectGalleryStyles(): void {
       padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 600;
       cursor: pointer; transition: background 0.15s, opacity 0.15s;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      white-space: nowrap; max-width: none; min-width: max-content;
     }
     .md-gallery-btn:hover:not(:disabled) { background: #2563eb; }
     .md-gallery-btn:disabled { opacity: 0.55; cursor: default; }
