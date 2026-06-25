@@ -32,9 +32,9 @@ export function unregisterFilename(url: string, desiredFilename: string): void {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 (globalThis as any).chrome.downloads.onDeterminingFilename.addListener(
   (item: any, suggest: any) => {
-    // DO NOT interfere with downloads initiated by other extensions (e.g. Video DownloadHelper)
-    // If we call suggest() on their downloads, we overwrite their filename choices!
-    if (item.byExtensionId && item.byExtensionId !== browser.runtime.id) {
+    // DO NOT interfere with downloads initiated by other extensions or the user.
+    // We strictly only process downloads that were initiated by our own service worker.
+    if (item.byExtensionId !== browser.runtime.id) {
       return;
     }
 
