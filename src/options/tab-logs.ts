@@ -41,7 +41,7 @@ export async function loadLogsTab(): Promise<void> {
     if (logs.length === 0) {
       container.append(el("p", { className: "default-note", textContent: "No logs yet." }));
     } else {
-      for (const entry of [...logs].reverse()) {
+      for (const entry of logs) {
         container.append(renderLogEntry(entry));
       }
     }
