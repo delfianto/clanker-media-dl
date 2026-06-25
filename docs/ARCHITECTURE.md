@@ -112,4 +112,22 @@ In MV3, `downloads.download()` is an async IPC call that eventually resolves wit
 
 **The Bug:** If the CDN responds *too quickly* (e.g., edge cached or tiny image), the network header arrives and `onDeterminingFilename` fires **before** the `downloads.download()` promise even resolves. Because your mapping hasn't been saved yet, the listener throws up its hands, Chrome uses the CDN's garbage filename, strips your subfolder, and drops the file directly into `~/Downloads`.
 
-**The Hack:** We bypass the race condition entirely by pre-registering a `pendingFilenames` map keyed by the **URL**, not the `downloadId`. We register the URL *before* we even call `downloads.download()`. When `onDeterminingFilename` fires, we check the URL, pop the pre-registered filename, and successfully enforce our custom path regardless of how fast Chrome's network stack is.
+**The Hack (v1, Failed):** We bypassed the race condition entirely by pre-registering a `pendingFilenames` map keyed by the **URL**, not the `downloadId`, in the background script's memory. 
+
+**The Catastrophic Reality:** In Manifest V3, background scripts are ephemeral "Service Workers". Chrome's task manager acts like a bored deity, ruthlessly murdering your Service Worker at random intervals, especially if a massive 600-item queue causes memory pressure. When the Service Worker is resurrected a microsecond later to handle the `onDeterminingFilename` event, all its memory variables (`new Map()`) are completely wiped. Chrome sees an empty map, laughs, and dumps your JPEGs into `~/Downloads` with raw CDN names.
+
+**The Real Hack (v2, Blood Magic):** The Service Worker's memory cannot be trusted. We now generate a cryptographically random nonce and write the intended `URL -> filename` mapping directly into `browser.storage.session` right before initiating the download. When `onDeterminingFilename` fires, the resurrected Service Worker blindly reaches into the browser's persistent session storage, plucks out the filename using the URL as a prefix, assigns it, and deletes the key. This allows the filename to survive Chrome's relentless assassination attempts.
+
+### The Failed Download Corpse Problem
+Sometimes a CDN rate-limits you and returns an HTTP 503 error, or a Cloudflare block HTML page. When this happens mid-download, Chrome's download manager sniffs the HTML body, aggressively renames the file from `.jpg` to `.html`, and leaves it rotting in your native Chrome Downloads dropdown tray as a "Failed - Unknown server error".
+
+If you are retrying 150 failed images, your native browser UI becomes a graveyard of 150 `.html` corpses.
+
+**The Hack:** The extension now plays the role of a silent assassin. It listens to `downloads.onChanged`. The exact millisecond a download is marked as `interrupted` or `canceled`, or when a managed gallery item successfully `completes`, the extension fires `browser.downloads.erase()` to instantly obliterate the download's existence from Chrome's UI history. Your native download shelf remains pristine.
+
+### The Security Boundary CustomEvent Bridge
+MV3 injects content scripts into an "ISOLATED" world. The extension has full access to `browser.*` APIs, but absolutely zero access to the actual website's javascript variables, making it impossible to read gallery state directly from the page's memory.
+
+To bypass this, we inject a script into the "MAIN" world. But the MAIN world script can't read the user's extension settings (like custom folder paths) because it doesn't have the `browser.*` API.
+
+**The Hack:** We run a multi-world relay race. The ISOLATED script boots up, reads the user's config from storage, stringifies it, and screams it into the void by firing a `__md_config__` `CustomEvent` directly onto the `document` object. The MAIN world script, which was synchronously injected and waiting, catches the `CustomEvent`, parses the JSON, and finally has the configuration needed to do its job. To fetch a blob bypassing CORS, the MAIN script uses `window.postMessage` to yell back at the ISOLATED script, which relays it to the Service Worker, which downloads the array buffer, and tosses it back over the wall as a zero-copy transferable. It is exhausting just to type.
