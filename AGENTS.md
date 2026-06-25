@@ -4,7 +4,6 @@ MV3 browser extension (Chrome + Firefox) for one-click image downloads from imag
 with built-in per-hoster thumbnail redirect (CDN URL → viewer page) and user-configurable settings.
 Personal tool; no external server dependencies, zero telemetry.
 
----
 
 ## Stack
 
@@ -19,7 +18,6 @@ Personal tool; no external server dependencies, zero telemetry.
 All commands go through `bun run <script>` or the `vp` CLI directly.  
 **Never use npm or npx.**
 
----
 
 ## Build commands
 
@@ -34,7 +32,6 @@ bun run fmt             # vp fmt src/ — oxfmt format
 
 Load the extension: Chrome → `chrome://extensions` → Developer mode → Load unpacked → `build/chrome/`
 
----
 
 ## Project structure
 
@@ -75,7 +72,6 @@ src/
     messages.d.ts       # MDFetchBlobRequest/Response, MDMainRequest/Response
 ```
 
----
 
 ## World split architecture — CRITICAL
 
@@ -111,7 +107,6 @@ SW returns `{ buffer: ArrayBuffer, contentType: string }`.
 
 **Transferable:** always pass `ArrayBuffer` as the third argument to `postMessage` (`[result.buffer]`) — zero-copy, avoids memory doubling on large images.
 
----
 
 ## Hoster model system
 
@@ -133,7 +128,6 @@ Settings storage holds only user *overrides*:
 4. Add viewer page matches + CDN matches to `vite.config.ts` manifest builder
 5. Run `bun run check` — fix type errors before committing
 
----
 
 ## Redirect mechanism
 
@@ -145,7 +139,6 @@ Template substitution: `$1`/`$2` → capture groups from the rule regex.
 
 **User overrides take effect on the next CDN URL navigation** — no reload of viewer pages needed.
 
----
 
 ## TypeScript conventions
 
@@ -156,7 +149,6 @@ Template substitution: `$1`/`$2` → capture groups from the rule regex.
 - `skipLibCheck: true` — upstream Rollup/Vite type mismatch; do not remove
 - Ambient `.d.ts` files cannot have initializers — types only, no `= value`
 
----
 
 ## oxlint / oxfmt rules
 
@@ -167,14 +159,12 @@ Active rules:
 - `no-console: off` — console usage allowed
 - `unicorn/no-thenable: error` — no property named `then` on plain objects
 
----
 
 ## Icons
 
 `icons/icon-48.png` and `icon-96.png` — same Microsoft Fluent Emoji 3D robot set as sister project (MIT).  
 Resized with `magick input.png -resize NxN -filter Lanczos output.png`.
 
----
 
 ## Git hygiene
 

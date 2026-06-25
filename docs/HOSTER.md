@@ -18,7 +18,6 @@ Each hoster's unique brand of nonsense is documented below:
 - [JPG6](HOSTER_JPG6.md)
 - [GirlsReleased](HOSTER_GIRLSRELEASED.md)
 
----
 
 ## The Gallery Pipeline
 
@@ -38,7 +37,6 @@ On any supported gallery/album page, you'll see a download button injected into 
 
 You can watch progress in the Downloads tab (History sub-tab), copy logs to clipboard for bug reports that will never be filed, and adjust parallelism settings in the Settings sub-tab.
 
----
 
 ## Adding More Sites
 
