@@ -4,8 +4,6 @@ The following is a real description of what happens when you press the download 
 
 This is not a joke. This is actually how the extension has to work because Manifest V3 is what happens when a browser vendor redesigns their extension API while clearly never having talked to an extension developer. Every single layer of this is load-bearing. The author did not choose this architecture for fun. The author chose this architecture because every simpler path was bricked.
 
----
-
 ### Single-image download
 
 ```
@@ -68,8 +66,6 @@ background/gallery.ts (Service Worker)
 ```
 
 All of this happens so you can press a button and get a JPEG. Just let that sink in.
-
----
 
 ## Hacks & MV3 Absurdities
 
