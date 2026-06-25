@@ -7,7 +7,13 @@ import { DEFAULT_SETTINGS } from "../settings/schema";
 import { $, clone, toast, el } from "./dom";
 import { renderPanel, renderSidebar } from "./tab-hosters";
 import { renderDownloadsSettings } from "./tab-downloads";
-import { formatJobStatus, loadHistoryTab, setHistoryFilter, getCurrentFilter } from "./tab-history";
+import {
+  formatJobStatus,
+  loadHistoryTab,
+  setHistoryFilter,
+  setHistorySearch,
+  getCurrentFilter,
+} from "./tab-history";
 import { formatLogLine, loadLogsTab } from "./tab-logs";
 
 let settings: Settings;
@@ -196,6 +202,12 @@ async function init(): Promise<void> {
   $("history-filter").addEventListener("change", (e) => {
     const filter = (e.target as HTMLSelectElement).value as "all" | "done" | "partial" | "running";
     setHistoryFilter(filter);
+    void loadHistoryTab(expandedJobIds);
+  });
+
+  $("history-search-input").addEventListener("input", (e) => {
+    const search = (e.target as HTMLInputElement).value;
+    setHistorySearch(search);
     void loadHistoryTab(expandedJobIds);
   });
 

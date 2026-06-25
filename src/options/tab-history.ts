@@ -253,6 +253,7 @@ export function renderJobCard(
 let currentPage = 1;
 const PAGE_SIZE = 50;
 let currentFilter: "all" | "done" | "partial" | "running" = "all";
+let currentSearch = "";
 
 export function getCurrentFilter() {
   return currentFilter;
@@ -260,6 +261,11 @@ export function getCurrentFilter() {
 
 export function setHistoryFilter(filter: "all" | "done" | "partial" | "running"): void {
   currentFilter = filter;
+  currentPage = 1;
+}
+
+export function setHistorySearch(search: string): void {
+  currentSearch = search.toLowerCase();
   currentPage = 1;
 }
 
@@ -283,6 +289,16 @@ export async function loadHistoryTab(expandedJobIds: Set<string>): Promise<void>
             (j.status === "done" && j.failedCount! > 0)
           );
         return true;
+      });
+    }
+
+    if (currentSearch) {
+      jobs = jobs.filter((j) => {
+        return (
+          (j.jobId && j.jobId.toLowerCase().includes(currentSearch)) ||
+          (j.subfolder && j.subfolder.toLowerCase().includes(currentSearch)) ||
+          (j.hosterId && j.hosterId.toLowerCase().includes(currentSearch))
+        );
       });
     }
 
