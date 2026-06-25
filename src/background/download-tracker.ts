@@ -8,38 +8,25 @@ interface PendingDownload {
 }
 
 const pendingDownloads = new Map<number, PendingDownload>();
-const pendingFilenames = new Map<string, string[]>();
-
-export function preRegisterFilename(url: string, desiredFilename: string): void {
-  const list = pendingFilenames.get(url) || [];
-  list.push(desiredFilename);
-  pendingFilenames.set(url, list);
+export async function preRegisterFilename(url: string, desiredFilename: string): Promise<string> {
+  const nonce = Date.now().toString() + Math.random().toString().slice(2);
+  const key = `md_dl_${url}_${nonce}`;
+  await browser.storage.session.set({ [key]: desiredFilename });
+  return key;
 }
 
-export function unregisterFilename(url: string, desiredFilename: string): void {
-  const list = pendingFilenames.get(url);
-  if (!list) return;
-  const idx = list.indexOf(desiredFilename);
-  if (idx !== -1) {
-    list.splice(idx, 1);
-  }
-  if (list.length === 0) {
-    pendingFilenames.delete(url);
-  }
+export async function unregisterFilename(key: string): Promise<void> {
+  await browser.storage.session.remove(key);
 }
 
-// Use chrome.downloads since webextension-polyfill might be missing onDeterminingFilename
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 (globalThis as any).chrome.downloads.onDeterminingFilename.addListener(
   (item: any, suggest: any) => {
-    // DO NOT interfere with downloads initiated by other extensions or the user.
-    // We strictly only process downloads that were initiated by our own service worker.
     if (item.byExtensionId !== browser.runtime.id) {
       return;
     }
 
     let attempts = 0;
-    const poll = () => {
+    const poll = async () => {
       // 1. Try by download ID first (most robust, requires trackDownload to have run)
       const pending = pendingDownloads.get(item.id);
       if (pending && pending.desiredFilename) {
@@ -47,25 +34,36 @@ export function unregisterFilename(url: string, desiredFilename: string): void {
         return;
       }
 
-      // 2. Try by URL (if trackDownload still hasn't run after polling)
-      const urlList = pendingFilenames.get(item.url);
-      if (urlList && urlList.length > 0) {
-        const desiredFilename = urlList.shift()!;
-        if (urlList.length === 0) pendingFilenames.delete(item.url);
-        suggest({ filename: desiredFilename, conflictAction: "uniquify" });
-        return;
+      // 2. Try by URL from storage.session (survives Service Worker restarts)
+      try {
+        const data = await browser.storage.session.get(null);
+        const prefix = `md_dl_${item.url}_`;
+        const matchingKeys = Object.keys(data).filter((k) => k.startsWith(prefix));
+
+        if (matchingKeys.length > 0) {
+          matchingKeys.sort(); // Use oldest first
+          const targetKey = matchingKeys[0];
+          const desiredFilename = data[targetKey!];
+
+          await browser.storage.session.remove(targetKey!);
+          suggest({ filename: desiredFilename, conflictAction: "uniquify" });
+          return;
+        }
+      } catch (err) {
+        console.warn("[md] Storage session read failed in onDeterminingFilename", err);
       }
 
+      // 3. Fallback polling
       if (attempts < 50) {
         attempts++;
-        setTimeout(poll, 10);
+        setTimeout(() => void poll(), 10);
       } else {
         suggest();
       }
     };
 
-    poll();
-    return true; // Return true to indicate suggest() will be called asynchronously. This also ensures we execute AFTER synchronous extensions.
+    void poll();
+    return true; // Return true to indicate suggest() will be called asynchronously.
   },
 );
 
@@ -119,10 +117,10 @@ export function trackDownload(
   downloadId: number,
   jobId: string,
   desiredFilename?: string,
-  url?: string,
+  regKey?: string,
 ): Promise<void> {
-  if (url && desiredFilename) {
-    unregisterFilename(url, desiredFilename);
+  if (regKey) {
+    void unregisterFilename(regKey);
   }
   return new Promise<void>((resolve, reject) => {
     pendingDownloads.set(downloadId, {

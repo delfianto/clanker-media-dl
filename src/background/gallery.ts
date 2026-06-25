@@ -234,7 +234,7 @@ export async function attemptDownload(
   // Pre-register the URL -> filename mapping before creating the download.
   // This fixes the Chrome MV3 race condition where onDeterminingFilename fires
   // *before* downloads.download resolves with its downloadId.
-  preRegisterFilename(url, filePath);
+  const regKey = await preRegisterFilename(url, filePath);
 
   try {
     const downloadId = await browser.downloads.download({
@@ -242,9 +242,9 @@ export async function attemptDownload(
       filename: filePath,
       conflictAction: "uniquify",
     });
-    await trackDownload(downloadId, jobId || "", filePath, url);
+    await trackDownload(downloadId, jobId || "", filePath, regKey);
   } catch (err) {
-    unregisterFilename(url, filePath);
+    await unregisterFilename(regKey);
     throw err;
   }
 }
