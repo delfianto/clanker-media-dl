@@ -1,11 +1,13 @@
 # Bunkr
 
 ## What it does
+
 - Single download button injection.
 - CDN → viewer redirect.
 - Gallery batch download.
 
 ## Quirks & Nonsense
+
 Oh boy. The whole beast. Bunkr is a multi-headed hydra of edge cases.
 
 - **21 Mirror Domains:** Yes, 21. We have to support all of them.
