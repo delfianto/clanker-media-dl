@@ -18,7 +18,6 @@ Each hoster's unique brand of nonsense is documented below:
 - [JPG6](HOSTER_JPG6.md)
 - [GirlsReleased](HOSTER_GIRLSRELEASED.md)
 
-
 ## The Gallery Pipeline
 
 On any supported gallery/album page, you'll see a download button injected into the page UI. Click it. The extension:
@@ -37,12 +36,11 @@ On any supported gallery/album page, you'll see a download button injected into 
 
 You can watch progress in the Downloads tab (History sub-tab), copy logs to clipboard for bug reports that will never be filed, and adjust parallelism settings in the Settings sub-tab.
 
-
 ## Adding More Sites
 
 Do you want to subject yourself to this architecture? Fine. Here is how you do it.
 
-1. **Write a `HosterModel`** in `src/hosts/{id}/model.ts`. 
+1. **Write a `HosterModel`** in `src/hosts/{id}/model.ts`.
    Define the redirect rules, download config, gallery config, and any optional `extractFromViewer`/`resolveUrl` hooks for Service Worker-side peculiarities.
 2. **Write a DOM adapter** in `src/hosts/{id}/adapter.ts`.
    Implement `activate()` for single-download injection and `activateGallery()` for gallery button injection (you get to write your own HTML, CSS, and placement logic).
