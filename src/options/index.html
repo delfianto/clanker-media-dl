@@ -52,12 +52,20 @@
           <div id="dl-view-history" hidden>
             <div class="logs-toolbar">
               <span id="history-count" class="log-count"></span>
-              <select id="history-filter" style="margin-left: 15px">
-                <option value="all">All Jobs</option>
-                <option value="done">Perfect (No Errors)</option>
-                <option value="partial">Partial / Errors</option>
-                <option value="running">Running</option>
-              </select>
+              <div class="logs-filters" style="display: flex; gap: 10px; margin: 0 15px; flex: 1">
+                <select id="history-filter" style="width: auto; flex: none">
+                  <option value="all">All Jobs</option>
+                  <option value="done">Complete</option>
+                  <option value="partial">Partial</option>
+                  <option value="running">Running</option>
+                </select>
+                <input
+                  type="text"
+                  id="history-search-input"
+                  placeholder="Search jobs..."
+                  style="flex: 1"
+                />
+              </div>
               <div class="logs-actions">
                 <button id="btn-stop-all" class="reset-btn">Stop All</button>
                 <button id="btn-resume-all" class="reset-btn">Resume All</button>
