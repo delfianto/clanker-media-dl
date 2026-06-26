@@ -83,9 +83,18 @@ export function parseSet(json: unknown): ParsedSet | null {
       continue;
     }
 
-    const filename = originalFilename || viewerUrl.split("/").at(-1) || "file";
+    // Special handling for broken internal links (e.g. /set/49693/641499154)
+    if (viewerUrl.startsWith("/set/")) {
+      continue;
+    }
+
+    const absoluteViewerUrl = viewerUrl.startsWith("/")
+      ? `https://girlsreleased.com${viewerUrl}`
+      : viewerUrl;
+
+    const filename = originalFilename || absoluteViewerUrl.split("/").at(-1) || "file";
     files.push({
-      viewerUrl,
+      viewerUrl: absoluteViewerUrl,
       thumbnailUrl,
       filename,
     });
