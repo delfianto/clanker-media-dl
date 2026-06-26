@@ -15,7 +15,6 @@ import {
   idbDeleteJobItems,
   idbClearAllJobItems,
   idbFindDoneItem,
-  idbGcCompletedJobs,
   type DownloadJobRecord,
   type JobItemRecord,
 } from "./idb";
@@ -178,13 +177,6 @@ export async function upsertJob(job: DownloadJob): Promise<void> {
 
   const record = toJobRecord(job);
   await idbPutJob(record);
-
-  // GC: cap completed jobs at 50 (only when a job transitions to done/error)
-  if (job.status === "done" || job.status === "error") {
-    await idbGcCompletedJobs(50).catch((err) => {
-      console.warn("[md] GC pass failed:", err);
-    });
-  }
 
   if (onJobUpdated) {
     onJobUpdated(job);
