@@ -9,7 +9,7 @@ Personal tool; no external server dependencies, zero telemetry.
 
 | Tool                      | Version           | Purpose                                                                                |
 | ------------------------- | ----------------- | -------------------------------------------------------------------------------------- |
-| TypeScript                | 7.0 RC (`rc` tag) | Language — strict, no legacy cruft                                                     |
+| TypeScript                | 7.0 (stable)      | Language — strict, no legacy cruft                                                     |
 | Bun                       | 1.x               | Package manager + script runner (not npm/yarn)                                         |
 | vite-plus (`vp`)          | latest            | Unified VoidZero toolchain — bundler, linter (oxlint), formatter (oxfmt), type checker |
 | vite-plugin-web-extension | 4.x               | Multi-entry extension build + manifest generation                                      |
