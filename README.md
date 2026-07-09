@@ -16,7 +16,7 @@ Behind this trivial act of clicking a button lies:
 
 - A **Manifest V3 service worker** that proxies cross-origin fetch requests because Chrome in its infinite wisdom decided content scripts shouldn't be able to just download things normally
 - A **dual content-script world architecture** with an elaborate `postMessage` bridge relay system because MV3 extension worlds cannot talk to each other like adults
-- **TypeScript 7 RC** — yes, the release candidate, because apparently downloading JPEGs required the absolute bleeding edge of Microsoft's type system
+- **TypeScript 7** — adopted back when it was still a release candidate, because apparently downloading JPEGs required the absolute bleeding edge of Microsoft's type system. It went stable. Nothing broke. Disappointing, honestly
 - A full **hoster model abstraction layer** with redirect rules, CDN URL rewriting, per-site override schemas, per-hoster gallery adapters, and SW-side hooks for URL signing and viewer-page extraction — for four websites
 - `exactOptionalPropertyTypes: true`, `noUncheckedIndexedAccess: true`, `verbatimModuleSyntax: true` — a tsconfig so strict it would reject your grandmother's birthday card for insufficient type narrowing
 - A settings page. An **options page**. With CSS. With per-hoster toggles. For a download button.
@@ -29,7 +29,7 @@ Is this over-engineered? Yes. Does that bother the author? No. Were several seri
 
 | Thing                     | Why                                                                   |
 | ------------------------- | --------------------------------------------------------------------- |
-| TypeScript 7 RC           | Felt dangerous. Lived.                                                |
+| TypeScript 7              | Adopted at RC. Felt dangerous. Lived. Now it's stable and boring.     |
 | Bun                       | npm is slow and boring. Also its built-in test runner is zero-config. |
 | vite-plus (`vp`)          | Unified VoidZero toolchain — lint, fmt, typecheck, build              |
 | vite-plugin-web-extension | Extension builds without wanting to die                               |
