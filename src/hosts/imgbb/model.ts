@@ -40,7 +40,17 @@ function collectImgbbItems(root?: Document | Element): GalleryJobItem[] {
 export const imgbbModel: HosterModel = {
   id: "imgbb",
   displayName: "ImgBB",
-  viewerMatches: ["https://ibb.co/*"],
+  // Viewer pages also live on two alias hosts besides ibb.co:
+  //  - ibb.co.com — a live mirror serving the identical viewer/album markup
+  //    (without a match here the extension never activates and the site's
+  //    download button falls back to a cross-origin navigation → image opens
+  //    in the browser instead of downloading).
+  //  - <username>.imgbb.com — user subdomains can render the viewer page under
+  //    the gallery host. The gallery branch in matchPage runs first and claims
+  //    "/" and "/album/*"; anything else (e.g. "/<code>") falls through to the
+  //    viewer matcher. Non-viewer strays (/login, /settings) simply find no
+  //    a.btn-download and bail harmlessly.
+  viewerMatches: ["https://ibb.co/*", "https://ibb.co.com/*", "https://*.imgbb.com/*"],
   cdnMatches: [],
   defaultRedirectRules: [],
   downloadConfig: {
@@ -55,7 +65,12 @@ export const imgbbModel: HosterModel = {
     // user); albums live at ibb.co/album/*. The *.imgbb.com match pattern also
     // matches the apex/language subdomains' upload pages — harmless, the
     // adapter finds no .list-item there and bails without injecting a button.
-    galleryMatches: ["https://ibb.co/album/*", "https://*.imgbb.com/*"],
+    // ibb.co.com/album/* covers the mirror's album pages (same markup).
+    galleryMatches: [
+      "https://ibb.co/album/*",
+      "https://*.imgbb.com/*",
+      "https://ibb.co.com/album/*",
+    ],
     // User galleries (and their sort tabs ?sort=...) live at the root path;
     // /album/* covers ibb.co albums. Excludes /login, /settings, /albums, etc.
     pathGuard: "^/(?:album/|$)",
