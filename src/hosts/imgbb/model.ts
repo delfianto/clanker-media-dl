@@ -51,7 +51,14 @@ export const imgbbModel: HosterModel = {
   defaultCssOverrides: "",
   hostPermissions: ["https://ibb.co/*", "https://*.ibb.co/*", "https://*.imgbb.com/*"],
   galleryConfig: {
-    galleryMatches: ["https://ibb.co/album/*"],
+    // User galleries live at <username>.imgbb.com (subdomain assigned per
+    // user); albums live at ibb.co/album/*. The *.imgbb.com match pattern also
+    // matches the apex/language subdomains' upload pages — harmless, the
+    // adapter finds no .list-item there and bails without injecting a button.
+    galleryMatches: ["https://ibb.co/album/*", "https://*.imgbb.com/*"],
+    // User galleries (and their sort tabs ?sort=...) live at the root path;
+    // /album/* covers ibb.co albums. Excludes /login, /settings, /albums, etc.
+    pathGuard: "^/(?:album/|$)",
     albumNameSelector: "h1",
     albumIdFromPath: "^/album/([^/?]+)",
     imageSource: {
@@ -59,10 +66,20 @@ export const imgbbModel: HosterModel = {
       // Fallback only — collectAllItems reads data-object for full-res URLs.
       imageSelector: ".image-container img",
     },
+    // User galleries use "endless" cursor pagination: only a next link
+    // (?page=N&seek=...) exists, so page 3+ is discoverable solely from page 2.
+    // On the last page the next link is disabled (no href) → null ends the chain.
+    nextPageUrl: (doc: Document): string | null =>
+      doc.querySelector<HTMLAnchorElement>(".content-listing-pagination .pagination-next a[href]")
+        ?.href ?? null,
     collectAllItems: collectImgbbItems,
   },
   getGalleryName: async (doc: Document): Promise<string | null> => {
-    // imgbb's <h1> truncates the album name with a literal "..." suffix (CSS
+    // User galleries: no album breadcrumb exists; the profile block's <h1>
+    // holds the display name (e.g. "Coba 97").
+    const userName = doc.querySelector<HTMLElement>("#top-user h1")?.textContent?.trim();
+    if (userName) return userName;
+    // Album pages: imgbb's <h1> truncates the album name with a literal "..." suffix (CSS
     // text-overflow). The full name is in the breadcrumb <a data-text="album-name">.
     const breadcrumb = doc.querySelector<HTMLAnchorElement>('a[data-text="album-name"]');
     return breadcrumb?.textContent?.trim() ?? null;

@@ -122,44 +122,66 @@ export async function fetchAdditionalItems(
   const allItems: GalleryJobItem[] = [];
   const parser = new DOMParser();
 
-  // Fetch all pages in parallel
-  const htmlTexts = await Promise.all(
-    pageUrls.map((url) =>
-      fetch(url)
-        .then((r) => {
-          if (!r.ok) throw new Error(`HTTP ${r.status}`);
-          return r.text();
-        })
-        .catch((err) => {
-          console.error(`[md] failed to fetch page ${url}:`, err);
-          return "";
-        }),
-    ),
-  );
+  // Cursor-pagination chains (gc.nextPageUrl) are bounded by `seen` (no URL is
+  // ever fetched twice) plus a hard page cap as a safety net against site
+  // changes. Classic paginations are unaffected: every next-link they produce
+  // is already in `seen` from the initial collectPageUrls batch.
+  const MAX_PAGES = 500;
+  const pending = [...pageUrls];
+  const seen = new Set(pending);
+  let fetched = 0;
 
-  for (const html of htmlTexts) {
-    if (!html) continue;
-    try {
-      const doc = parser.parseFromString(html, "text/html");
-      let pageItems: GalleryJobItem[] = [];
-      if (gc.collectAllItems) {
-        pageItems = await gc.collectAllItems(doc);
-      } else {
-        switch (gc.imageSource.strategy) {
-          case "thumbnail-transform":
-            pageItems = collectThumbnailTransform(gc, doc);
-            break;
-          case "anchor-href":
-            pageItems = collectAnchorHref(gc, doc);
-            break;
-          case "resolve-viewer":
-            pageItems = collectResolveViewer(gc, doc, useFallbackName);
-            break;
+  // Fetch each round of discovered pages in parallel
+  while (pending.length > 0 && fetched < MAX_PAGES) {
+    const batch = pending.splice(0, pending.length);
+    fetched += batch.length;
+    const htmlTexts = await Promise.all(
+      batch.map((url) =>
+        fetch(url)
+          .then((r) => {
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+            return r.text();
+          })
+          .catch((err) => {
+            console.error(`[md] failed to fetch page ${url}:`, err);
+            return "";
+          }),
+      ),
+    );
+
+    for (const html of htmlTexts) {
+      if (!html) continue;
+      try {
+        const doc = parser.parseFromString(html, "text/html");
+        let pageItems: GalleryJobItem[] = [];
+        if (gc.collectAllItems) {
+          pageItems = await gc.collectAllItems(doc);
+        } else {
+          switch (gc.imageSource.strategy) {
+            case "thumbnail-transform":
+              pageItems = collectThumbnailTransform(gc, doc);
+              break;
+            case "anchor-href":
+              pageItems = collectAnchorHref(gc, doc);
+              break;
+            case "resolve-viewer":
+              pageItems = collectResolveViewer(gc, doc, useFallbackName);
+              break;
+          }
         }
+        allItems.push(...pageItems);
+
+        // Endless/cursor pagination: page N+1's URL only exists in page N's
+        // document (e.g. imgbb user galleries), so it can't be discovered by
+        // collectPageUrls on the live page. Queue it for the next round.
+        const next = gc.nextPageUrl?.(doc);
+        if (next && !seen.has(next)) {
+          seen.add(next);
+          pending.push(next);
+        }
+      } catch (e) {
+        console.error("[md] failed to parse page document:", e);
       }
-      allItems.push(...pageItems);
-    } catch (e) {
-      console.error("[md] failed to parse page document:", e);
     }
   }
 

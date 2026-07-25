@@ -21,7 +21,13 @@ export function activate(model: HosterModel, config: MDConfig): void {
 }
 
 export function activateGallery(_model: HosterModel, ctx: GalleryCtx): void {
-  const headerRight = document.querySelector(".header-content-right");
+  // Prefer the tabs-header slot (empty on both album + user gallery pages).
+  // The plain fallback keeps album pages working if the tabs header is absent —
+  // on user galleries the first .header-content-right is inside the #top-user
+  // profile block, which is the wrong spot for the button.
+  const headerRight =
+    document.querySelector(".header-tabs .header-content-right") ??
+    document.querySelector(".header-content-right");
   if (!headerRight) return;
 
   injectGalleryStyles();

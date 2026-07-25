@@ -142,6 +142,12 @@ export type GalleryConfig = {
   // hoster, items whose filename matches this test use the file ID from the
   // anchor href instead.
   isBizarreName?: (name: string) => boolean;
+  // Optional: extract the URL of the next gallery page from a FETCHED page's
+  // document. Needed for cursor/"endless" pagination where page N+1 is only
+  // discoverable from page N (e.g. imgbb user galleries: ?page=2&seek=...).
+  // fetchAdditionalItems follows the chain until it returns null or a URL it
+  // has already seen. Return null on the last page (disabled next link).
+  nextPageUrl?: (doc: Document) => string | null;
   pathGuard?: string; // runtime regex on location.pathname before activating (jpg6 / user pages)
   waitForSelector?: string; // wait for this selector to exist in DOM before running gallery adapter
   // Crawl phase for aggregator hosters (girlsreleased). When present and the
