@@ -104,6 +104,14 @@ export default defineConfig({
     sourcemap: process.env["NODE_ENV"] !== "production",
     // true uses the toolchain's native Oxc minifier; "esbuild" is dead in Vite+.
     minify: process.env["NODE_ENV"] === "production",
+    // Suppress modulepreload <link> tags in built HTML. Vite emits these for
+    // shared chunks (browser-polyfill.js, schema.js), but the same URLs are also
+    // imported by content scripts and the service worker — different extension
+    // "worlds". Chrome flags the preload as a "cross-world extension resource
+    // mismatch" and ignores it, logging a warning for every extension page
+    // (offscreen/popup/options). Disabling the preload entirely avoids the
+    // noise; the import statements still load the chunks on demand.
+    modulePreload: false,
   },
 
   lint: {

@@ -69,6 +69,9 @@ export function wireGalleryButton(
     if (data["type"] === "MD_JOB_PROGRESS" && data["jobId"] === activeJobId) {
       const status = data["status"];
       if (status === "done" || status === "error" || status === "canceled") {
+        console.log(
+          `[md] gallery button reset — jobId=${data["jobId"]} status=${status} completed=${data["completedCount"]}/${data["totalCount"]} failed=${data["failedCount"] ?? 0}`,
+        );
         btn.innerHTML = doneIcon;
         btn.classList.remove("loading");
         activeJobId = "";

@@ -90,7 +90,12 @@ export function activateGallery(_model: HosterModel, ctx: GalleryCtx): void {
   dlBtn.className = "md-ib-gallery-btn";
   dlBtn.title = "Download Gallery";
   const dlIcon = '<i class="fa fa-download"></i>';
-  const loadingIcon = '<i class="fa fa-spinner fa-spin"></i> ';
+  // Self-contained md-spin SVG: imagebam's `fa fa-spinner fa-spin` depends on
+  // FontAwesome being loaded with the `fa-spin` keyframe. The bundled FA on
+  // imagebam's gallery pages doesn't always include that keyframe, leaving the
+  // loading icon static. Inline-styled SVG animates regardless.
+  const loadingIcon =
+    '<svg viewBox="0 0 24 24" width="1.1em" height="1.1em" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" style="display: inline-block; vertical-align: middle; animation: md-spin 1s linear infinite;"><circle cx="12" cy="12" r="10" stroke="currentColor" opacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor"/></svg> ';
   dlBtn.innerHTML = dlIcon;
 
   wireGalleryButton(dlBtn, loadingIcon, dlIcon, ctx.triggerDownload);

@@ -100,7 +100,23 @@ function onMainMessage(event: MessageEvent): void {
 
   if (type === "MD_GALLERY_START") {
     // Fire-and-forget: no response needed in MAIN world; SW handles progress.
-    void browser.runtime.sendMessage(data as unknown as MDGalleryStartRequest).catch(() => {});
+    // Surface relay errors that were previously swallowed — a silent failure
+    // here makes the button reset to dlIcon without any job appearing in
+    // History, which is exactly the "spinner spins and stops, nothing
+    // downloaded" symptom for the user.
+    const req = data as unknown as MDGalleryStartRequest;
+    const itemCount = req.items?.length ?? 0;
+    console.log(
+      `[md] isolated: relaying MD_GALLERY_START to SW — jobId=${req.jobId} items=${itemCount} hoster=${req.hosterId}`,
+    );
+    void browser.runtime
+      .sendMessage(data as unknown as MDGalleryStartRequest)
+      .then(() => {
+        console.log(`[md] isolated: SW accepted MD_GALLERY_START (jobId=${req.jobId})`);
+      })
+      .catch((err: unknown) => {
+        console.error(`[md] isolated: SW rejected MD_GALLERY_START (jobId=${req.jobId}):`, err);
+      });
     return;
   }
 
@@ -215,6 +231,9 @@ async function init(): Promise<void> {
   browser.runtime.onMessage.addListener((msg: unknown) => {
     const m = msg as Record<string, unknown>;
     if (m["type"] === "MD_JOB_PROGRESS") {
+      console.log(
+        `[md] isolated: received MD_JOB_PROGRESS from SW — jobId=${m["jobId"]} status=${m["status"]} completed=${m["completedCount"]}/${m["totalCount"]} failed=${m["failedCount"] ?? 0}`,
+      );
       window.postMessage(m, "*");
     }
   });

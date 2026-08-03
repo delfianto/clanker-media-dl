@@ -277,6 +277,15 @@ async function runQueue(
   maxRetries: number,
   skipExisting: boolean,
 ): Promise<void> {
+  // Count how many entries were already marked done by setup dedup so we can
+  // distinguish "all skipped" (no downloads, looks like nothing happened) from
+  // a genuine download run.
+  const alreadyDone = entries.filter((e) => job.items?.[e.origIdx]?.status === "done").length;
+  const toDownload = entries.length - alreadyDone;
+  console.log(
+    `[md] runQueue start — jobId=${job.jobId} subfolder="${job.subfolder}" entries=${entries.length} alreadyDone=${alreadyDone} toDownload=${toDownload} skipExisting=${skipExisting}`,
+  );
+
   if (job.subfolder && entries.length > 0) {
     // Pre-create the directory to bypass a Chromium Linux bug where concurrent
     // downloads to a new directory trigger a mkdir race condition, dropping files into ~/Downloads.
@@ -490,6 +499,10 @@ export async function startGalleryJob(req: MDGalleryStartRequest): Promise<void>
 
         job.completedCount = job.items?.filter((item) => item.status === "done").length ?? 0;
 
+        console.log(
+          `[md] startGalleryJob setup done — jobId=${job.jobId} items=${req.items.length} skipped=${job.completedCount} pending=${req.items.length - job.completedCount} subfolder="${req.subfolder}"`,
+        );
+
         await upsertJob(job);
         await insertJobItems(job);
         broadcastJobStart(job);
@@ -523,6 +536,11 @@ export async function startGalleryJob(req: MDGalleryStartRequest): Promise<void>
       })
       .catch((err) => {
         void appendLog("error", `Job setup crashed: ${String(err)}`, job.jobId);
+        console.error(`[md] startGalleryJob setup crashed — jobId=${job.jobId}`, err);
+        // Resolve with empty entries so `await setup` in myTurn doesn't hang
+        // forever — the job will simply complete with no items downloaded.
+        // Without this, a single setup crash deadlocks the whole queue.
+        resolve({ imageEntries: [], mediaEntries: [], maxRetries: 0, skipExisting: false });
       });
   });
 

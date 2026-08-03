@@ -249,6 +249,9 @@ export function runGalleryAdapter(
         maxParallelImg: config.maxParallelImg,
         maxParallelVid: config.maxParallelVid,
       };
+      console.log(
+        `[md] triggerDownload posting MD_GALLERY_START — jobId=${jobId} items=${jobItems.length} subfolder="${subfolder}"`,
+      );
       window.postMessage(req, "*");
       return jobId;
     }

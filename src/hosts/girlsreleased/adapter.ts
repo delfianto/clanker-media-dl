@@ -59,8 +59,11 @@ export function activateGallery(_model: HosterModel, ctx: GalleryCtx): void {
 
   const dlIcon =
     '<span class="btn-icon" style="margin-right: 6px; font-size: 16px;">📥</span> <span class="btn-text">Download Gallery</span>';
+  // Self-contained md-spin SVG: the previous `⏳` emoji loaded but never
+  // animated, which made the button look frozen during long crawls. Inline
+  // SVG with our own @keyframes md-spin actually rotates.
   const loadingIcon =
-    '<span class="btn-icon" style="margin-right: 6px; font-size: 16px;">⏳</span> <span class="btn-text">Downloading...</span>';
+    '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" style="display: inline-block; vertical-align: middle; margin-right: 6px; animation: md-spin 1s linear infinite;"><circle cx="12" cy="12" r="10" stroke="currentColor" opacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor"/></svg> <span class="btn-text">Downloading...</span>';
 
   const dlBtn = document.createElement("button");
   dlBtn.type = "button";
