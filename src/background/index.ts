@@ -151,9 +151,17 @@ browser.runtime.onMessage.addListener(
 
     if (m["type"] === "MD_GALLERY_START") {
       // Do not return this Promise; returning holds the message port open until completion, causing SW starvation.
-      void startGalleryJob(m as unknown as MDGalleryStartRequest).catch((err: unknown) => {
-        console.error("[md] gallery job failed:", err);
-      });
+      const req = m as unknown as MDGalleryStartRequest;
+      console.log(
+        `[md] SW received MD_GALLERY_START — jobId=${req.jobId} items=${req.items?.length ?? 0} hoster=${req.hosterId}`,
+      );
+      void startGalleryJob(req)
+        .then(() => {
+          console.log(`[md] SW startGalleryJob completed (jobId=${req.jobId})`);
+        })
+        .catch((err: unknown) => {
+          console.error(`[md] gallery job failed (jobId=${req.jobId}):`, err);
+        });
       return; // Close the message channel immediately
     }
 

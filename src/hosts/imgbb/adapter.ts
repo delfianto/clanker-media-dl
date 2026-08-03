@@ -43,8 +43,12 @@ export function activateGallery(_model: HosterModel, ctx: GalleryCtx): void {
 
   const dlIcon =
     '<span class="btn-icon icon-download"></span><span class="btn-text phone-hide">Download</span>';
+  // Self-contained md-spin SVG: imgbb's own `icon-circle-notch icon-spin`
+  // stopped animating (host CSS scoping changed), which made the loading state
+  // look frozen. Inline-styled SVG with our own keyframe animates regardless
+  // of host CSS.
   const loadingIcon =
-    '<span class="btn-icon icon-circle-notch icon-spin"></span><span class="btn-text phone-hide">Download</span>';
+    '<span class="btn-icon"><svg viewBox="0 0 24 24" width="1.1em" height="1.1em" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" style="display: inline-block; vertical-align: middle; animation: md-spin 1s linear infinite;"><circle cx="12" cy="12" r="10" stroke="currentColor" opacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor"/></svg></span><span class="btn-text phone-hide">Download</span>';
 
   const dlBtn = document.createElement("a");
   dlBtn.href = "javascript:void(0);";
