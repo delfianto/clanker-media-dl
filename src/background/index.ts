@@ -126,11 +126,9 @@ browser.runtime.onMessage.addListener(
 
     if (m["type"] === "MD_FETCH_BLOB" && typeof m["url"] === "string") {
       const req = m as unknown as MDFetchBlobRequest;
-      return crossOriginFetchBlob(req.url).catch(
-        (err: unknown): MDFetchBlobResponse => ({
-          error: err instanceof Error ? err.message : String(err),
-        }),
-      );
+      return crossOriginFetchBlob(req.url).catch((err: unknown): MDFetchBlobResponse => ({
+        error: err instanceof Error ? err.message : String(err),
+      }));
     }
 
     if (
