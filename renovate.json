@@ -5,7 +5,9 @@
   "platformAutomerge": true,
   "labels": ["dependencies"],
   "lockFileMaintenance": {
-    "enabled": true
+    "enabled": true,
+    "automerge": true,
+    "automergeType": "pr"
   },
   "packageRules": [
     {
