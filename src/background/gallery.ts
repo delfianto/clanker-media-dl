@@ -225,7 +225,7 @@ export async function attemptDownload(
   );
   if (orphaned) {
     void appendLog("debug", `Adopting orphaned native download for ${filePath}`, jobId || "");
-    await trackDownload(orphaned.id, jobId || "", filePath, orphaned.url);
+    await trackDownload(orphaned.id, jobId || "", filePath);
     return;
   }
 
@@ -234,7 +234,7 @@ export async function attemptDownload(
   // Pre-register the URL -> filename mapping before creating the download.
   // This fixes the Chrome MV3 race condition where onDeterminingFilename fires
   // *before* downloads.download resolves with its downloadId.
-  const regKey = await preRegisterFilename(url, filePath);
+  const regKey = preRegisterFilename(url, filePath);
 
   try {
     const downloadId = await browser.downloads.download({
@@ -242,9 +242,9 @@ export async function attemptDownload(
       filename: filePath,
       conflictAction: "uniquify",
     });
-    await trackDownload(downloadId, jobId || "", filePath, regKey);
+    await trackDownload(downloadId, jobId || "", filePath);
   } catch (err) {
-    await unregisterFilename(regKey);
+    unregisterFilename(regKey);
     throw err;
   }
 }

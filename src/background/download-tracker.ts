@@ -8,64 +8,78 @@ interface PendingDownload {
 }
 
 const pendingDownloads = new Map<number, PendingDownload>();
-export async function preRegisterFilename(url: string, desiredFilename: string): Promise<string> {
-  const nonce = Date.now().toString() + Math.random().toString().slice(2);
-  const key = `md_dl_${url}_${nonce}`;
-  await browser.storage.session.set({ [key]: desiredFilename });
+
+interface FilenameRegistration {
+  url: string;
+  desiredFilename: string;
+  cleanupTimer: ReturnType<typeof setTimeout>;
+}
+
+interface FilenameDownloadItem {
+  id: number;
+  url: string;
+  byExtensionId?: string;
+}
+
+type FilenameSuggestion = (suggestion?: { filename: string; conflictAction: "uniquify" }) => void;
+
+type FilenameListener = (item: FilenameDownloadItem, suggest: FilenameSuggestion) => void;
+
+interface NativeDownloads {
+  onDeterminingFilename: {
+    addListener: (listener: FilenameListener) => void;
+    removeListener: (listener: FilenameListener) => void;
+  };
+}
+
+const nativeDownloads = (globalThis as unknown as { chrome: { downloads: NativeDownloads } }).chrome
+  .downloads;
+const filenameRegistrations = new Map<string, FilenameRegistration>();
+let filenameListenerInstalled = false;
+
+function removeFilenameRegistration(key: string): void {
+  const registration = filenameRegistrations.get(key);
+  if (!registration) return;
+
+  clearTimeout(registration.cleanupTimer);
+  filenameRegistrations.delete(key);
+  if (filenameRegistrations.size === 0 && filenameListenerInstalled) {
+    nativeDownloads.onDeterminingFilename.removeListener(determineFilename);
+    filenameListenerInstalled = false;
+  }
+}
+
+const determineFilename: FilenameListener = (item, suggest) => {
+  // Merely keeping this event listener installed changes filename resolution
+  // for every extension. Only install it while one of our own downloads is
+  // entering Chrome's download manager, and never suggest for another
+  // extension's download.
+  if (item.byExtensionId !== browser.runtime.id) return;
+
+  for (const [key, registration] of filenameRegistrations) {
+    if (registration.url !== item.url) continue;
+
+    suggest({ filename: registration.desiredFilename, conflictAction: "uniquify" });
+    removeFilenameRegistration(key);
+    return;
+  }
+};
+
+export function preRegisterFilename(url: string, desiredFilename: string): string {
+  const key = crypto.randomUUID();
+  const cleanupTimer = setTimeout(() => removeFilenameRegistration(key), 30_000);
+  filenameRegistrations.set(key, { url, desiredFilename, cleanupTimer });
+
+  if (!filenameListenerInstalled) {
+    nativeDownloads.onDeterminingFilename.addListener(determineFilename);
+    filenameListenerInstalled = true;
+  }
   return key;
 }
 
-export async function unregisterFilename(key: string): Promise<void> {
-  await browser.storage.session.remove(key);
+export function unregisterFilename(key: string): void {
+  removeFilenameRegistration(key);
 }
-
-(globalThis as any).chrome.downloads.onDeterminingFilename.addListener(
-  (item: any, suggest: any) => {
-    if (item.byExtensionId !== browser.runtime.id) {
-      return;
-    }
-
-    let attempts = 0;
-    const poll = async () => {
-      // 1. Try by download ID first (most robust, requires trackDownload to have run)
-      const pending = pendingDownloads.get(item.id);
-      if (pending && pending.desiredFilename) {
-        suggest({ filename: pending.desiredFilename, conflictAction: "uniquify" });
-        return;
-      }
-
-      // 2. Try by URL from storage.session (survives Service Worker restarts)
-      try {
-        const data = await browser.storage.session.get(null);
-        const prefix = `md_dl_${item.url}_`;
-        const matchingKeys = Object.keys(data).filter((k) => k.startsWith(prefix));
-
-        if (matchingKeys.length > 0) {
-          matchingKeys.sort(); // Use oldest first
-          const targetKey = matchingKeys[0];
-          const desiredFilename = data[targetKey!];
-
-          await browser.storage.session.remove(targetKey!);
-          suggest({ filename: desiredFilename, conflictAction: "uniquify" });
-          return;
-        }
-      } catch (err) {
-        console.warn("[md] Storage session read failed in onDeterminingFilename", err);
-      }
-
-      // 3. Fallback polling
-      if (attempts < 50) {
-        attempts++;
-        setTimeout(() => void poll(), 10);
-      } else {
-        suggest();
-      }
-    };
-
-    void poll();
-    return true; // Return true to indicate suggest() will be called asynchronously.
-  },
-);
 
 browser.downloads.onChanged.addListener((delta) => {
   if (delta.state === undefined) return;
@@ -123,11 +137,7 @@ export function trackDownload(
   downloadId: number,
   jobId: string,
   desiredFilename?: string,
-  regKey?: string,
 ): Promise<void> {
-  if (regKey) {
-    void unregisterFilename(regKey);
-  }
   return new Promise<void>((resolve, reject) => {
     pendingDownloads.set(downloadId, {
       resolve,
