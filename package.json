@@ -21,8 +21,19 @@
     "@types/chrome": "^0.3.0",
     "@types/webextension-polyfill": "^0.12.5",
     "typescript": "^7.0.2",
+    "vite": "npm:@voidzero-dev/vite-plus-core@1.0.0",
     "vite-plugin-web-extension": "^4.5.1",
-    "vite-plus": "^0.3.0"
+    "vite-plus": "1.0.0"
+  },
+  "overrides": {
+    "vite": "npm:@voidzero-dev/vite-plus-core@1.0.0"
+  },
+  "devEngines": {
+    "packageManager": {
+      "name": "bun",
+      "version": "1.4.2",
+      "onFail": "download"
+    }
   },
   "trustedDependencies": [
     "spawn-sync"
