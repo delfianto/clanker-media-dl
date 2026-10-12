@@ -41,7 +41,9 @@ function updateBadge(): void {
 
 export function initDownloadUi(): void {
   activeJobs = 0;
-  void closeOffscreenDocument();
+  void closeOffscreenDocument(() => activeJobs === 0).catch((error: unknown) => {
+    console.warn("[md] could not close idle offscreen document:", error);
+  });
   setNativeUi(true);
   updateBadge();
 }
@@ -53,7 +55,9 @@ export function jobActivityBegin(): void {
     // Create the offscreen document to serve as a keep-alive anchor.
     // The offscreen document will ping the SW periodically to reset
     // the idle timer.
-    void ensureOffscreenDocument();
+    void ensureOffscreenDocument().catch((error: unknown) => {
+      console.warn("[md] could not create download keep-alive document:", error);
+    });
   }
   updateBadge();
 }
@@ -62,7 +66,9 @@ export function jobActivityEnd(): void {
   if (activeJobs > 0) activeJobs--;
   if (activeJobs === 0) {
     setNativeUi(true);
-    void closeOffscreenDocument();
+    void closeOffscreenDocument(() => activeJobs === 0).catch((error: unknown) => {
+      console.warn("[md] could not close idle offscreen document:", error);
+    });
   }
   updateBadge();
 }

@@ -1,3 +1,4 @@
+import { isMDMessage } from "./shared/message-data";
 import browser from "webextension-polyfill";
 import type { MDConfig, Settings } from "../types/global";
 import type { HosterModel } from "../types/hoster";
@@ -73,8 +74,40 @@ function base64ToBuffer(base64: string): ArrayBuffer {
   return bytes.buffer;
 }
 
+// Promise-wrap runtime access too: after an extension reload Chrome may throw
+// synchronously, before sendMessage() has returned a Promise to attach catch to.
+async function sendToBackground(message: unknown): Promise<unknown> {
+  try {
+    if (!browser.runtime.id) throw new Error("Extension context invalidated");
+    return await browser.runtime.sendMessage(message);
+  } catch (error) {
+    if (/Extension context invalidated/i.test(String(error))) {
+      throw new Error("Extension was reloaded. Reload this page to reconnect the download button.");
+    }
+    throw error;
+  }
+}
+
+async function relayJobStatus(jobId: string): Promise<void> {
+  try {
+    const response = await sendToBackground({ type: "MD_JOB_STATUS", jobId });
+    if (isMDMessage(response) && response.type === "MD_JOB_PROGRESS") {
+      window.postMessage(response, "*");
+    }
+  } catch (error) {
+    window.postMessage(
+      {
+        type: "MD_GALLERY_ERROR",
+        jobId,
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "*",
+    );
+  }
+}
+
 function onMainMessage(event: MessageEvent): void {
-  if (event.source !== window) return;
+  if (event.source !== window || !isMDMessage(event.data)) return;
   const data = event.data as Record<string, unknown>;
   const type = data["type"];
 
@@ -109,14 +142,26 @@ function onMainMessage(event: MessageEvent): void {
     console.log(
       `[md] isolated: relaying MD_GALLERY_START to SW — jobId=${req.jobId} items=${itemCount} hoster=${req.hosterId}`,
     );
-    void browser.runtime
-      .sendMessage(data as unknown as MDGalleryStartRequest)
+    void sendToBackground(data)
       .then(() => {
         console.log(`[md] isolated: SW accepted MD_GALLERY_START (jobId=${req.jobId})`);
       })
       .catch((err: unknown) => {
         console.error(`[md] isolated: SW rejected MD_GALLERY_START (jobId=${req.jobId}):`, err);
+        window.postMessage(
+          {
+            type: "MD_GALLERY_ERROR",
+            jobId: req.jobId,
+            error: err instanceof Error ? err.message : String(err),
+          },
+          "*",
+        );
       });
+    return;
+  }
+
+  if (type === "MD_JOB_STATUS" && typeof data["jobId"] === "string") {
+    void relayJobStatus(data["jobId"]);
     return;
   }
 
@@ -124,7 +169,7 @@ function onMainMessage(event: MessageEvent): void {
   // lifecycle; progress flows back to MAIN via the MD_JOB_PROGRESS forwarder
   // below, which the gallery-runner listens to for cancellation + button text.
   if (type === "MD_CRAWL_START" || type === "MD_CRAWL_PROGRESS" || type === "MD_CRAWL_DONE") {
-    void browser.runtime.sendMessage(data).catch(() => {});
+    void sendToBackground(data).catch(() => {});
     return;
   }
 }
@@ -137,7 +182,7 @@ async function relayDownloadSingle(
 ): Promise<void> {
   let result: MDBlobResult;
   try {
-    const res = (await browser.runtime.sendMessage({
+    const res = (await sendToBackground({
       type: "MD_DOWNLOAD_SINGLE",
       url,
       filename,
@@ -159,7 +204,7 @@ async function relayBlob(id: string, url: string): Promise<void> {
   let result: MDBlobResult;
   try {
     const request: MDFetchBlobRequest = { type: "MD_FETCH_BLOB", url };
-    const res = (await browser.runtime.sendMessage(request)) as MDFetchBlobResponse;
+    const res = (await sendToBackground(request)) as MDFetchBlobResponse;
     result =
       "error" in res
         ? { error: res.error }
@@ -229,7 +274,8 @@ async function init(): Promise<void> {
   window.addEventListener("message", onMainMessage);
 
   browser.runtime.onMessage.addListener((msg: unknown) => {
-    const m = msg as Record<string, unknown>;
+    if (!isMDMessage(msg)) return;
+    const m = msg;
     if (m["type"] === "MD_JOB_PROGRESS") {
       console.log(
         `[md] isolated: received MD_JOB_PROGRESS from SW — jobId=${m["jobId"]} status=${m["status"]} completed=${m["completedCount"]}/${m["totalCount"]} failed=${m["failedCount"] ?? 0}`,

@@ -1,3 +1,4 @@
+import { isMDMessage } from "./message-data";
 import type { MDConfig } from "../../types/global";
 import type { HosterModel } from "../../types/hoster";
 import type { CrawlResult } from "../../types/hoster";
@@ -144,7 +145,7 @@ export function runGalleryAdapter(
           // card or Stop All). The ISOLATED world forwards it to MAIN, so we can
           // abort in-flight fetches and suppress the download burst.
           const crawlCancelListener = (event: MessageEvent): void => {
-            if (event.source !== window) return;
+            if (event.source !== window || !isMDMessage(event.data)) return;
             const d = event.data as Record<string, unknown>;
             if (
               d["type"] === "MD_JOB_PROGRESS" &&

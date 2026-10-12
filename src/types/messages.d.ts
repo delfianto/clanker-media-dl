@@ -77,6 +77,8 @@ export type MDGalleryStartRequest = {
   items: GalleryJobItem[];
   maxParallelImg: number;
   maxParallelVid: number;
+  // Explicit retry can bypass history without changing the user's setting.
+  skipExistingFiles?: boolean;
   postedAt?: number | undefined;
 };
 
@@ -91,6 +93,7 @@ export type MDJobProgressMessage = {
   completedCount: number;
   totalCount: number;
   failedCount: number;
+  skippedCount?: number;
   status: "running" | "done" | "error" | "canceled";
   // Full item list — sent only on job start (initial render). Omitted on
   // per-item updates in favor of itemDelta.
@@ -105,6 +108,9 @@ export type MDJobProgressMessage = {
     sourceUrl?: string;
   };
 };
+
+// MAIN → ISOLATED → SW: recover counts/terminal status if a broadcast was missed.
+export type MDJobStatusRequest = { type: "MD_JOB_STATUS"; jobId: string };
 
 // Options page → SW: request the current job list for the Downloads tab.
 export type MDListJobsRequest = { type: "MD_LIST_JOBS" };

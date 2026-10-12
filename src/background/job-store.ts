@@ -1,6 +1,6 @@
 import browser from "webextension-polyfill";
 import type { DownloadJob, DownloadJobItem } from "../types/jobs";
-import type { MDGalleryStartRequest } from "../types/messages";
+import type { MDGalleryStartRequest, MDJobProgressMessage } from "../types/messages";
 import { DEFAULT_SETTINGS } from "../settings/schema";
 import { appendLog } from "./logger";
 import { cancelActiveDownloads } from "./download-tracker";
@@ -68,6 +68,8 @@ export async function migrateJobsIfNeeded(): Promise<void> {
       totalCount: job.totalCount,
       completedCount: job.completedCount,
       failedCount: job.failedCount,
+      ...(job.skippedCount !== undefined ? { skippedCount: job.skippedCount } : {}),
+      ...(job.skipExistingFiles !== undefined ? { skipExistingFiles: job.skipExistingFiles } : {}),
       status: job.status,
       startedAt: job.startedAt,
       ...(job.originalItems ? { originalItems: job.originalItems } : {}),
@@ -131,6 +133,10 @@ function reconstructJob(record: DownloadJobRecord, items: JobItemRecord[]): Down
     totalCount: record.totalCount,
     completedCount: record.completedCount,
     failedCount: record.failedCount,
+    ...(record.skippedCount !== undefined ? { skippedCount: record.skippedCount } : {}),
+    ...(record.skipExistingFiles !== undefined
+      ? { skipExistingFiles: record.skipExistingFiles }
+      : {}),
     status: record.status,
     startedAt: record.startedAt,
     items: jobItems,
@@ -154,6 +160,8 @@ function toJobRecord(job: DownloadJob): DownloadJobRecord {
     totalCount: job.totalCount,
     completedCount: job.completedCount,
     failedCount: job.failedCount,
+    ...(job.skippedCount !== undefined ? { skippedCount: job.skippedCount } : {}),
+    ...(job.skipExistingFiles !== undefined ? { skipExistingFiles: job.skipExistingFiles } : {}),
     status: job.status,
     startedAt: job.startedAt,
     ...(job.originalItems ? { originalItems: job.originalItems } : {}),
@@ -257,6 +265,22 @@ export async function getJob(jobId: string): Promise<DownloadJob | null> {
   return reconstructJob(record, items);
 }
 
+// Counts only: content scripts can recover missed progress without loading or
+// serializing the full item list on every poll.
+export async function getJobProgress(jobId: string): Promise<MDJobProgressMessage | null> {
+  const job = await idbGetJob(jobId);
+  if (!job) return null;
+  return {
+    type: "MD_JOB_PROGRESS",
+    jobId: job.jobId,
+    completedCount: job.completedCount,
+    totalCount: job.totalCount,
+    failedCount: job.failedCount,
+    ...(job.skippedCount !== undefined ? { skippedCount: job.skippedCount } : {}),
+    status: job.status,
+  };
+}
+
 // List all jobs WITHOUT items — job metadata only. The History tab renders
 // cards from this; items are loaded on-demand when a card is expanded.
 // With 139 jobs this returns ~139 small records instead of 139 × 50 items.
@@ -269,6 +293,10 @@ export async function listJobs(): Promise<DownloadJob[]> {
     totalCount: record.totalCount,
     completedCount: record.completedCount,
     failedCount: record.failedCount,
+    ...(record.skippedCount !== undefined ? { skippedCount: record.skippedCount } : {}),
+    ...(record.skipExistingFiles !== undefined
+      ? { skipExistingFiles: record.skipExistingFiles }
+      : {}),
     status: record.status,
     startedAt: record.startedAt,
     items: [],
@@ -384,6 +412,9 @@ export async function resumeJob(
     maxParallelImg: record.maxParallelImg,
     maxParallelVid: record.maxParallelVid,
     ...(record.postedAt ? { postedAt: record.postedAt } : {}),
+    ...(record.skipExistingFiles !== undefined
+      ? { skipExistingFiles: record.skipExistingFiles }
+      : {}),
   };
 
   record.status = "running";
@@ -432,6 +463,9 @@ export async function resumeRunningJobs(
         maxParallelImg: record.maxParallelImg,
         maxParallelVid: record.maxParallelVid,
         ...(record.postedAt ? { postedAt: record.postedAt } : {}),
+        ...(record.skipExistingFiles !== undefined
+          ? { skipExistingFiles: record.skipExistingFiles }
+          : {}),
       };
 
       if (onJobUpdated) {

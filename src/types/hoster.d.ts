@@ -13,7 +13,8 @@ export type HosterId =
   | "bunkr"
   | "erome"
   | "jpg6"
-  | "girlsreleased";
+  | "girlsreleased"
+  | "civitai";
 
 export type RedirectRule = {
   id: string; // stable slug for user-override keying, e.g. "imagebam-new"

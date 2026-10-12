@@ -38,7 +38,7 @@ Is this over-engineered? Yes. Does that bother the author? No. Were several seri
 
 ## Supported Sites
 
-For a complete breakdown of supported sites, the bizarre CDN quirks we bypass, and how to add a site yourself if you're a glutton for punishment, see [docs/HOSTER.md](docs/HOSTER.md).
+For a complete breakdown of supported sites, the bizarre CDN quirks we bypass, and how to add a site yourself if you're a glutton for punishment, see [docs/hoster.md](docs/hoster.md).
 
 ## HOW TO USE IT
 
@@ -111,7 +111,7 @@ If your feelings about LLM-assisted code are stronger than your desire to have a
 
 Do you want to know what actually happens when you press the download button? Do you want to learn about the horrors of Manifest V3, dual content-script world isolation, and Service Worker connection starvation?
 
-[Read the Architecture Docs here.](docs/ARCHITECTURE.md) You have been warned.
+[Read the Architecture Docs here.](docs/architecture.md) You have been warned.
 
 ## License
 

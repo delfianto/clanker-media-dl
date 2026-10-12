@@ -87,7 +87,9 @@ export function formatJobStatus(job: DownloadJob): string {
   if (job.status === "done") {
     return job.failedCount > 0
       ? `Done — ${job.failedCount} failed`
-      : `Done — ${job.totalCount} files`;
+      : job.skippedCount
+        ? `Done — ${job.completedCount - job.skippedCount} downloaded, ${job.skippedCount} already downloaded`
+        : `Done — ${job.completedCount} files`;
   }
   if (job.status === "canceled") {
     return `Stopped — ${job.completedCount} / ${job.totalCount}`;

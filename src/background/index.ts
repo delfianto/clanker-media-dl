@@ -13,12 +13,14 @@ import type {
   MDGetLogsResponse,
   MDGetJobRequest,
   MDGetJobResponse,
+  MDJobProgressMessage,
 } from "../types/messages";
 import { crossOriginFetchBlob } from "./fetcher";
 import { initDownloadUi } from "./download-ui";
 import { startGalleryJob, attemptDownload } from "./gallery";
 import {
   listJobs,
+  getJobProgress,
   resumeRunningJobs,
   deleteJob,
   cancelJob,
@@ -107,6 +109,8 @@ type AnyResponse =
   | MDListJobsResponse
   | MDGetLogsResponse
   | MDGetJobResponse
+  | MDJobProgressMessage
+  | null
   | { error?: string }
   | void;
 
@@ -161,6 +165,10 @@ browser.runtime.onMessage.addListener(
           console.error(`[md] gallery job failed (jobId=${req.jobId}):`, err);
         });
       return; // Close the message channel immediately
+    }
+
+    if (m["type"] === "MD_JOB_STATUS" && typeof m["jobId"] === "string") {
+      return getJobProgress(m["jobId"]);
     }
 
     if (m["type"] === "MD_LIST_JOBS") {

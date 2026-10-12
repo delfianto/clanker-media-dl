@@ -34,6 +34,8 @@ export type DownloadJob = {
   totalCount: number;
   completedCount: number;
   failedCount: number;
+  skippedCount?: number;
+  skipExistingFiles?: boolean;
   status: DownloadJobStatus;
   startedAt: number;
   items?: DownloadJobItem[];

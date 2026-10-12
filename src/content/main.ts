@@ -29,6 +29,10 @@ import {
   activate as activateGirlsreleased,
   activateGallery as activateGalleryGirlsreleased,
 } from "../hosts/girlsreleased/adapter";
+import {
+  activate as activateCivitai,
+  activateGallery as activateGalleryCivitai,
+} from "../hosts/civitai/adapter";
 import { runGalleryAdapter, type GalleryAdapterFn } from "./shared/gallery-runner";
 
 const ADAPTERS: Record<HosterId, (model: HosterModel, config: MDConfig) => void> = {
@@ -39,6 +43,7 @@ const ADAPTERS: Record<HosterId, (model: HosterModel, config: MDConfig) => void>
   erome: activateErome,
   jpg6: activateJpg6,
   girlsreleased: activateGirlsreleased,
+  civitai: activateCivitai,
 };
 
 const GALLERY_ADAPTERS: Record<HosterId, GalleryAdapterFn> = {
@@ -49,6 +54,7 @@ const GALLERY_ADAPTERS: Record<HosterId, GalleryAdapterFn> = {
   erome: activateGalleryErome,
   jpg6: activateGalleryJpg6,
   girlsreleased: activateGalleryGirlsreleased,
+  civitai: activateGalleryCivitai,
 };
 
 // Listen for activation config from isolated world (only sent if extension/hoster is enabled).

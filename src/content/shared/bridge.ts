@@ -1,3 +1,4 @@
+import { isMDMessage } from "./message-data";
 import type { MDBlobResult, MDMainRequest, MDMainResponse } from "../../types/messages";
 
 // MAIN-world side of the fetch bridge. The MAIN world has no browser.* API, so
@@ -6,7 +7,7 @@ import type { MDBlobResult, MDMainRequest, MDMainResponse } from "../../types/me
 const pending = new Map<string, (result: MDBlobResult) => void>();
 
 window.addEventListener("message", (event: MessageEvent) => {
-  if (event.source !== window) return;
+  if (event.source !== window || !isMDMessage(event.data)) return;
   const data = event.data as Partial<MDMainResponse>;
   if (data.type !== "MD_RESPONSE" || typeof data.id !== "string" || !data.result) return;
 

@@ -7,6 +7,8 @@ import { eromeModel } from "./erome/model";
 import { jpg6Model } from "./jpg6/model";
 import { girlsreleasedModel } from "./girlsreleased/model";
 
+import { civitaiModel } from "./civitai/model";
+
 // Every hoster the extension knows about. The redirector iterates this; the
 // popup uses it to render the hoster list and detect the active page.
 export const ALL_MODELS: HosterModel[] = [
@@ -17,6 +19,7 @@ export const ALL_MODELS: HosterModel[] = [
   eromeModel,
   jpg6Model,
   girlsreleasedModel,
+  civitaiModel,
 ];
 
 export function getModel(id: HosterId): HosterModel | undefined {
