@@ -23,6 +23,8 @@ import { isMediaFile, isTransientError, classifyFailure, failureLabel } from "./
 import { sanitizeFilename } from "./sanitize";
 import { DEFAULT_SETTINGS } from "../settings/schema";
 import { getModel } from "../hosts/index";
+import { idbGetJobItems } from "./idb";
+import { downloadParallelism, findCompletedGalleryItem } from "./gallery-policy";
 
 // Maintain a single sequential queue for all download jobs. They will be
 // processed strictly in the order they are started.
@@ -51,6 +53,7 @@ function broadcastProgress(job: DownloadJob): void {
     completedCount: job.completedCount,
     totalCount: job.totalCount,
     failedCount: job.failedCount,
+    skippedCount: job.skippedCount ?? 0,
     status: job.status,
   };
   void browser.runtime.sendMessage(msg).catch(() => {});
@@ -66,6 +69,7 @@ function broadcastJobStart(job: DownloadJob): void {
     completedCount: job.completedCount,
     totalCount: job.totalCount,
     failedCount: job.failedCount,
+    skippedCount: job.skippedCount ?? 0,
     status: job.status,
     ...(job.items ? { items: job.items } : {}),
   };
@@ -84,6 +88,7 @@ function broadcastItemUpdate(job: DownloadJob, idx: number): void {
     completedCount: job.completedCount,
     totalCount: job.totalCount,
     failedCount: job.failedCount,
+    skippedCount: job.skippedCount ?? 0,
     status: job.status,
     itemDelta: {
       idx,
@@ -106,6 +111,8 @@ async function broadcastProgressToTabs(job: DownloadJob): Promise<void> {
     jobId: job.jobId,
     completedCount: job.completedCount,
     totalCount: job.totalCount,
+    failedCount: job.failedCount,
+    skippedCount: job.skippedCount ?? 0,
     status: job.status,
   };
 
@@ -179,7 +186,11 @@ async function precheckDownloadUrl(url: string): Promise<void> {
   if (!url.startsWith("http")) return;
 
   try {
-    const res = await fetch(url, { method: "HEAD", credentials: "include" });
+    const res = await fetch(url, {
+      method: "HEAD",
+      credentials: "include",
+      signal: AbortSignal.timeout(30_000),
+    });
     if (res.status === 405) return; // Method Not Allowed, fallback to native
 
     // If it's a 4xx or 5xx, throw early so we don't pollute the Chrome Downloads UI
@@ -286,7 +297,7 @@ async function runQueue(
     `[md] runQueue start — jobId=${job.jobId} subfolder="${job.subfolder}" entries=${entries.length} alreadyDone=${alreadyDone} toDownload=${toDownload} skipExisting=${skipExisting}`,
   );
 
-  if (job.subfolder && entries.length > 0) {
+  if (job.subfolder && toDownload > 0) {
     // Pre-create the directory to bypass a Chromium Linux bug where concurrent
     // downloads to a new directory trigger a mkdir race condition, dropping files into ~/Downloads.
     await createSubfolder(job.subfolder);
@@ -359,6 +370,7 @@ async function runQueue(
         const existing = await findDoneItem(itemSubfolder, displayName);
         if (existing) {
           job.completedCount++;
+          job.skippedCount = (job.skippedCount ?? 0) + 1;
           if (job.items?.[idx]) {
             job.items[idx].status = "done";
             job.items[idx].filename = existing.filename || safeFilename;
@@ -459,11 +471,13 @@ export async function startGalleryJob(req: MDGalleryStartRequest): Promise<void>
     totalCount: req.items.length,
     completedCount: 0,
     failedCount: 0,
+    skippedCount: 0,
+    ...(req.skipExistingFiles !== undefined ? { skipExistingFiles: req.skipExistingFiles } : {}),
     status: "running",
     startedAt: nextStartedAt(),
     originalItems: req.items,
-    maxParallelImg: req.maxParallelImg,
-    maxParallelVid: req.maxParallelVid,
+    maxParallelImg: downloadParallelism(req.maxParallelImg, DEFAULT_SETTINGS.maxParallelImg, 20),
+    maxParallelVid: downloadParallelism(req.maxParallelVid, DEFAULT_SETTINGS.maxParallelVid, 5),
     postedAt: req.postedAt,
     items: [],
   };
@@ -471,9 +485,35 @@ export async function startGalleryJob(req: MDGalleryStartRequest): Promise<void>
   // Eagerly run setup but QUEUE it sequentially! When a crawl fires 50 jobs
   // at once, doing 5000 IDB transactions concurrently crashes the Service Worker
   // due to OOM. By chaining setup operations sequentially, we serialize IDB access.
-  const setup = new Promise<any>((resolve) => {
+  const setup = new Promise<{
+    imageEntries: QueueEntry[];
+    mediaEntries: QueueEntry[];
+    maxRetries: number;
+    skipExisting: boolean;
+    setupError?: unknown;
+  }>((resolve) => {
     setupPromiseQueue = setupPromiseQueue
       .then(async () => {
+        const stored = await browser.storage.local.get({
+          maxDownloadRetries: DEFAULT_SETTINGS.maxDownloadRetries,
+          skipExistingFiles: DEFAULT_SETTINGS.skipExistingFiles,
+        });
+        const maxRetries =
+          typeof stored["maxDownloadRetries"] === "number"
+            ? stored["maxDownloadRetries"]
+            : DEFAULT_SETTINGS.maxDownloadRetries;
+        const skipExisting =
+          req.skipExistingFiles ??
+          (typeof stored["skipExistingFiles"] === "boolean"
+            ? stored["skipExistingFiles"]
+            : DEFAULT_SETTINGS.skipExistingFiles);
+        // A resumed job keeps its own completed items even when forced retries
+        // bypass successes recorded by other jobs.
+        const previousItems = await idbGetJobItems(req.jobId);
+        const completedHere = new Map(
+          previousItems.filter((item) => item.status === "done").map((item) => [item.idx, item]),
+        );
+
         // Dedup: for each item, check if a done item with the same [subfolder+
         // displayName] already exists in IDB. Composite index — O(1) per item.
         for (let i = 0; i < req.items.length; i++) {
@@ -483,7 +523,13 @@ export async function startGalleryJob(req: MDGalleryStartRequest): Promise<void>
           const sourceUrl =
             item.kind === "resolve-viewer" ? item.viewerUrl : (item.sourceUrl ?? item.imageUrl);
 
-          const existing = await findDoneItem(req.subfolder, displayName);
+          const existing = await findCompletedGalleryItem(
+            item,
+            req.subfolder,
+            skipExisting,
+            completedHere.get(i),
+            findDoneItem,
+          );
           const result: DownloadJobItem = {
             displayName,
             filename: existing ? existing.filename : item.filename,
@@ -498,6 +544,7 @@ export async function startGalleryJob(req: MDGalleryStartRequest): Promise<void>
         }
 
         job.completedCount = job.items?.filter((item) => item.status === "done").length ?? 0;
+        job.skippedCount = job.completedCount;
 
         console.log(
           `[md] startGalleryJob setup done — jobId=${job.jobId} items=${req.items.length} skipped=${job.completedCount} pending=${req.items.length - job.completedCount} subfolder="${req.subfolder}"`,
@@ -519,28 +566,20 @@ export async function startGalleryJob(req: MDGalleryStartRequest): Promise<void>
           job.jobId,
         );
 
-        const stored = await browser.storage.local.get({
-          maxDownloadRetries: DEFAULT_SETTINGS.maxDownloadRetries,
-          skipExistingFiles: DEFAULT_SETTINGS.skipExistingFiles,
-        });
-        const maxRetries =
-          typeof stored["maxDownloadRetries"] === "number"
-            ? stored["maxDownloadRetries"]
-            : DEFAULT_SETTINGS.maxDownloadRetries;
-        const skipExisting =
-          typeof stored["skipExistingFiles"] === "boolean"
-            ? stored["skipExistingFiles"]
-            : DEFAULT_SETTINGS.skipExistingFiles;
-
         resolve({ imageEntries, mediaEntries, maxRetries, skipExisting });
       })
       .catch((err) => {
         void appendLog("error", `Job setup crashed: ${String(err)}`, job.jobId);
         console.error(`[md] startGalleryJob setup crashed — jobId=${job.jobId}`, err);
-        // Resolve with empty entries so `await setup` in myTurn doesn't hang
-        // forever — the job will simply complete with no items downloaded.
-        // Without this, a single setup crash deadlocks the whole queue.
-        resolve({ imageEntries: [], mediaEntries: [], maxRetries: 0, skipExisting: false });
+        // Settle setup so later jobs can proceed, but never treat failure as a
+        // successful empty batch. The queue's error path persists and broadcasts it.
+        resolve({
+          imageEntries: [],
+          mediaEntries: [],
+          maxRetries: 0,
+          skipExisting: false,
+          setupError: err,
+        });
       });
   });
 
@@ -556,7 +595,9 @@ export async function startGalleryJob(req: MDGalleryStartRequest): Promise<void>
   // the true-FIFO fix: topmost in the list runs first.
   const myTurn = activeJobPromise
     .then(async () => {
-      const { imageEntries, mediaEntries, maxRetries, skipExisting } = await setup;
+      const result = await setup;
+      if ("setupError" in result) throw result.setupError;
+      const { imageEntries, mediaEntries, maxRetries, skipExisting } = result;
 
       // Read latest status to verify it wasn't cancelled while waiting in the queue
       const latestJob = await getJob(job.jobId);
@@ -570,8 +611,8 @@ export async function startGalleryJob(req: MDGalleryStartRequest): Promise<void>
       // Run both queues concurrently — images at maxParallelImg, media at maxParallelVid.
       // Both share the same job counters; job completes when both queues drain.
       await Promise.all([
-        runQueue(job, imageEntries, req.maxParallelImg, maxRetries, skipExisting),
-        runQueue(job, mediaEntries, req.maxParallelVid, maxRetries, skipExisting),
+        runQueue(job, imageEntries, job.maxParallelImg!, maxRetries, skipExisting),
+        runQueue(job, mediaEntries, job.maxParallelVid!, maxRetries, skipExisting),
       ]);
 
       // Read latest job status from storage to see if it was cancelled
@@ -601,8 +642,33 @@ export async function startGalleryJob(req: MDGalleryStartRequest): Promise<void>
         job.jobId,
       );
     })
-    .catch((err) => {
+    .catch(async (err: unknown) => {
       console.error(`[md] Error running queued job ${job.jobId}:`, err);
+      if (isJobCancelled(job.jobId)) return;
+      job.status = "error";
+      job.originalItems = req.items;
+      job.items = req.items.map((item, idx) => {
+        const previous = job.items?.[idx];
+        if (previous?.status === "done") return previous;
+        return {
+          displayName: item.kind === "resolve-viewer" ? item.viewerUrl : item.imageUrl,
+          filename: item.filename,
+          status: "error" as const,
+          error: failureLabel(err),
+          sourceUrl:
+            item.kind === "resolve-viewer" ? item.viewerUrl : (item.sourceUrl ?? item.imageUrl),
+        };
+      });
+      job.failedCount = job.items.filter((item) => item.status === "error").length;
+      job.completedCount = job.totalCount;
+      try {
+        await upsertJob(job);
+        await insertJobItems(job);
+      } catch (persistError) {
+        console.error(`[md] Could not persist failed job ${job.jobId}:`, persistError);
+      }
+      broadcastProgress(job);
+      void appendLog("error", `Gallery job failed: ${String(err)}`, job.jobId);
     })
     .finally(() => {
       jobActivityEnd();

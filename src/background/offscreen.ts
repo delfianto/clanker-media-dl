@@ -1,8 +1,19 @@
 import browser from "webextension-polyfill";
+import { createOffscreenLifecycle } from "./offscreen-lifecycle";
 
-let creatingOffscreen: Promise<void> | null = null;
+type OffscreenApi = {
+  createDocument: (options: {
+    url: string;
+    reasons: string[];
+    justification: string;
+  }) => Promise<void>;
+  closeDocument: () => Promise<void>;
+};
+
+const offscreen = (browser as unknown as { offscreen?: OffscreenApi }).offscreen;
 
 export async function hasOffscreenDocument(): Promise<boolean> {
+  if (!offscreen) return false;
   if ("getContexts" in browser.runtime) {
     const contexts = await (browser.runtime as any).getContexts({
       contextTypes: ["OFFSCREEN_DOCUMENT"],
@@ -14,28 +25,30 @@ export async function hasOffscreenDocument(): Promise<boolean> {
   return clients.some((c: any) => c.url.includes("offscreen/index.html"));
 }
 
+const lifecycle = createOffscreenLifecycle({
+  exists: hasOffscreenDocument,
+  create: async () => {
+    await offscreen?.createDocument({
+      url: "src/offscreen/index.html",
+      reasons: ["BLOBS"],
+      justification: "Fetch media that requires a page context and keep active download jobs alive",
+    });
+  },
+  close: async () => {
+    await offscreen?.closeDocument();
+  },
+});
+
 export async function ensureOffscreenDocument(): Promise<void> {
-  if (await hasOffscreenDocument()) return;
-
-  if (creatingOffscreen) {
-    await creatingOffscreen;
-    return;
-  }
-
-  creatingOffscreen = (browser as any).offscreen.createDocument({
-    url: "src/offscreen/index.html",
-    reasons: ["BLOBS"],
-    justification: "Fetch and download Erome media to bypass Referer check and Keep-Alive SW",
-  });
-
-  try {
-    await creatingOffscreen;
-  } finally {
-    creatingOffscreen = null;
-  }
+  // Firefox has no Chrome offscreen API; native downloads still work without
+  // the Chrome keep-alive document.
+  if (!offscreen) return;
+  await lifecycle.ensure();
 }
 
-export async function closeOffscreenDocument(): Promise<void> {
-  if (!(await hasOffscreenDocument())) return;
-  await (browser as any).offscreen.closeDocument().catch(() => {});
+export async function closeOffscreenDocument(
+  shouldClose: () => boolean = () => true,
+): Promise<void> {
+  if (!offscreen) return;
+  await lifecycle.close(shouldClose);
 }

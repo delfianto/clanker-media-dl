@@ -1,10 +1,8 @@
 import browser from "webextension-polyfill";
+import { waitForDownloadCompletion } from "./download-completion";
 
 interface PendingDownload {
-  resolve: () => void;
-  reject: (err: Error) => void;
-  jobId?: string;
-  desiredFilename?: string;
+  jobId: string;
 }
 
 const pendingDownloads = new Map<number, PendingDownload>();
@@ -81,71 +79,52 @@ export function unregisterFilename(key: string): void {
   removeFilenameRegistration(key);
 }
 
-browser.downloads.onChanged.addListener((delta) => {
-  if (delta.state === undefined) return;
-  const pending = pendingDownloads.get(delta.id);
-  if (!pending) return;
-
-  if (delta.state.current === "complete") {
-    pendingDownloads.delete(delta.id);
-
-    if (pending.desiredFilename) {
-      browser.downloads
-        .search({ id: delta.id })
-        .then((results) => {
-          const dl = results[0];
-          if (dl && dl.filename) {
-            const actualPath = dl.filename.replace(/\\/g, "/");
-            const expectedSuffix = pending.desiredFilename!.replace(/\\/g, "/");
-            if (!actualPath.endsWith(expectedSuffix)) {
-              // Stray file detected! The browser saved it somewhere else (usually ~/Downloads).
-              // Dynamic import to avoid circular dependencies if any exist.
-              import("./logger")
-                .then(({ appendLog }) => {
-                  void appendLog(
-                    "error",
-                    `STRAY FILE DETECTED! Expected: .../${expectedSuffix} | Actual: ${actualPath} | Source URL: ${dl.url}`,
-                    pending.jobId,
-                  );
-                })
-                .catch(() => {});
-            }
-          }
-        })
-        .catch(() => {});
-    }
-
-    if (pending.jobId) {
-      browser.downloads.erase({ id: delta.id }).catch(() => {});
-    }
-
-    pending.resolve();
-  } else if (delta.state.current === "interrupted") {
-    pendingDownloads.delete(delta.id);
-    browser.downloads.erase({ id: delta.id }).catch(() => {});
-    pending.reject(
-      new Error(`download interrupted${delta.error ? `: ${delta.error.current}` : ""}`),
-    );
-  } else if (delta.state.current === "canceled") {
-    pendingDownloads.delete(delta.id);
-    browser.downloads.erase({ id: delta.id }).catch(() => {});
-    pending.reject(new Error("download canceled"));
-  }
-});
-
-export function trackDownload(
+export async function trackDownload(
   downloadId: number,
   jobId: string,
   desiredFilename?: string,
 ): Promise<void> {
-  return new Promise<void>((resolve, reject) => {
-    pendingDownloads.set(downloadId, {
-      resolve,
-      reject,
-      jobId,
-      ...(desiredFilename ? { desiredFilename } : {}),
-    });
-  });
+  pendingDownloads.set(downloadId, { jobId });
+  try {
+    await waitForDownloadCompletion(
+      async () => (await browser.downloads.search({ id: downloadId }))[0],
+      (onState) => {
+        const listener = (delta: browser.Downloads.OnChangedDownloadDeltaType): void => {
+          if (delta.id !== downloadId || !delta.state?.current) return;
+          onState({
+            state: delta.state.current,
+            ...(delta.error?.current ? { error: delta.error.current } : {}),
+          });
+        };
+        browser.downloads.onChanged.addListener(listener);
+        return () => browser.downloads.onChanged.removeListener(listener);
+      },
+    );
+
+    // Inspect the filename before erasing history; otherwise the audit races
+    // with erase() and often sees no item at all.
+    if (desiredFilename) {
+      const dl = (await browser.downloads.search({ id: downloadId }).catch(() => []))[0];
+      if (dl?.filename) {
+        const actualPath = dl.filename.replace(/\\/g, "/");
+        const expectedSuffix = desiredFilename.replace(/\\/g, "/");
+        if (!actualPath.endsWith(expectedSuffix)) {
+          const { appendLog } = await import("./logger");
+          void appendLog(
+            "error",
+            `STRAY FILE DETECTED! Expected: .../${expectedSuffix} | Actual: ${actualPath} | Source URL: ${dl.url}`,
+            jobId,
+          );
+        }
+      }
+    }
+  } catch (error) {
+    await browser.downloads.erase({ id: downloadId }).catch(() => {});
+    throw error;
+  } finally {
+    pendingDownloads.delete(downloadId);
+    if (jobId) await browser.downloads.erase({ id: downloadId }).catch(() => {});
+  }
 }
 
 export function cancelActiveDownloads(jobId: string): void {

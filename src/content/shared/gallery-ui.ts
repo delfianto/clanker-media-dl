@@ -1,3 +1,4 @@
+import { isMDMessage } from "./message-data";
 import type { GalleryJobItem } from "../../types/messages";
 
 const STYLE_ID = "md-gallery-styles";
@@ -64,7 +65,7 @@ export function wireGalleryButton(
   });
 
   window.addEventListener("message", (event) => {
-    if (event.source !== window) return;
+    if (event.source !== window || !isMDMessage(event.data)) return;
     const data = event.data as Record<string, unknown>;
     if (data["type"] === "MD_JOB_PROGRESS" && data["jobId"] === activeJobId) {
       const status = data["status"];

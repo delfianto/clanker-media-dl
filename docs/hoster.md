@@ -10,13 +10,14 @@ Because the web is a terrible place built on hacks and dreams, every image hoste
 
 Each hoster's unique brand of nonsense is documented below:
 
-- [ImageBam](HOSTER_IMAGEBAM.md)
-- [ImgBox](HOSTER_IMGBOX.md)
-- [ImgBB](HOSTER_IMGBB.md)
-- [Bunkr](HOSTER_BUNKR.md)
-- [Erome](HOSTER_EROME.md)
-- [JPG6](HOSTER_JPG6.md)
-- [GirlsReleased](HOSTER_GIRLSRELEASED.md)
+- [ImageBam](hoster_imagebam.md)
+- [ImgBox](hoster_imgbox.md)
+- [ImgBB](hoster_imgbb.md)
+- [Bunkr](hoster_bunkr.md)
+- [Erome](hoster_erome.md)
+- [JPG6](hoster_jpg6.md)
+- [GirlsReleased](hoster_girlsreleased.md)
+- [Civitai](hoster_civitai.md)
 
 ## The Gallery Pipeline
 

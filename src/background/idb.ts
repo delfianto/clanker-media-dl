@@ -353,6 +353,8 @@ export type DownloadJobRecord = {
   totalCount: number;
   completedCount: number;
   failedCount: number;
+  skippedCount?: number;
+  skipExistingFiles?: boolean;
   status: "running" | "done" | "error" | "canceled";
   startedAt: number;
   items?: {
