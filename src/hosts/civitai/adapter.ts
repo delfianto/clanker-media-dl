@@ -2,9 +2,9 @@ import { isMDMessage } from "../../content/shared/message-data";
 import type { MDConfig } from "../../types/global";
 import type { HosterModel } from "../../types/hoster";
 import type { MDGalleryStartRequest } from "../../types/messages";
-import { buildSubfolder } from "../../content/shared/collector";
 import { injectHosterStyles, type GalleryCtx } from "../../content/shared/gallery-ui";
 import { carouselItems, collectCarousel, readCarousel } from "./carousel";
+import { carouselSubfolder, readSelectedModelVariant } from "./folders";
 
 let cleanup: (() => void) | undefined;
 let activeConfig: MDConfig;
@@ -109,6 +109,11 @@ export function activate(model: HosterModel, config: MDConfig): void {
     // Keep the same carousel for the whole collection. Closing or replacing it
     // fails the collection instead of accidentally queuing another gallery.
     const node = activeNode;
+    // Snapshot before pagination: changing the selected version while collecting
+    // must not rename this batch after a different version's pill.
+    const config = activeConfig;
+    const variantName = readSelectedModelVariant();
+    const modelId = /\/models\/(\d+)/.exec(location.pathname)?.[1];
     try {
       const images = await collectCarousel(
         () => (node.isConnected ? readCarousel(node) : null),
@@ -121,7 +126,6 @@ export function activate(model: HosterModel, config: MDConfig): void {
       if (!items.length) throw new Error("This carousel contains no downloadable media.");
       const state = readCarousel(node);
       const firstId = images[0]?.id ?? "gallery";
-      const modelId = /\/models\/(\d+)/.exec(location.pathname)?.[1];
       const albumName = modelId
         ? `Civitai model ${modelId} - carousel ${firstId}`
         : `Civitai carousel ${firstId}`;
@@ -131,10 +135,10 @@ export function activate(model: HosterModel, config: MDConfig): void {
         type: "MD_GALLERY_START",
         jobId: activeJob,
         hosterId: model.id,
-        subfolder: buildSubfolder(albumName, activeConfig),
+        subfolder: carouselSubfolder(albumName, variantName, items.length, config),
         items,
-        maxParallelImg: activeConfig.maxParallelImg,
-        maxParallelVid: activeConfig.maxParallelVid,
+        maxParallelImg: config.maxParallelImg,
+        maxParallelVid: config.maxParallelVid,
         ...(event.shiftKey ? { skipExistingFiles: false } : {}),
       };
       setLabel(`Queued ${items.length} files…`, true);
