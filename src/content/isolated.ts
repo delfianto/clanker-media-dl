@@ -12,6 +12,7 @@ import type {
 } from "../types/messages";
 import { ALL_MODELS } from "../hosts/index";
 import { DEFAULT_SETTINGS } from "../settings/schema";
+import { applyStorageChanges } from "../settings/storage-changes";
 
 // ISOLATED world, document_idle, on viewer + gallery pages. Responsibilities:
 //   1. resolve which hoster this page belongs to + whether it's viewer or gallery,
@@ -236,7 +237,8 @@ async function init(): Promise<void> {
 
   let lastUrl = location.href;
 
-  function checkAndTrigger() {
+  function checkAndTrigger(configOnly = false) {
+    if (!settings.enabled) return;
     const match = matchPage(location.href, location.pathname);
     console.log("[md] isolated checkAndTrigger, url:", location.href, "match:", match);
     if (!match) return;
@@ -245,9 +247,10 @@ async function init(): Promise<void> {
     const override = settings.hosters[model.id];
     if (!override?.enabled) return;
 
-    model.onPageEnter?.();
+    if (!configOnly) model.onPageEnter?.();
 
-    if (pageType === "viewer" && override.cssOverrides) injectCss(override.cssOverrides);
+    if (!configOnly && pageType === "viewer" && override.cssOverrides)
+      injectCss(override.cssOverrides);
 
     const config: MDConfig = {
       hosterId: model.id,
@@ -257,11 +260,34 @@ async function init(): Promise<void> {
       downloadDirectory: settings.downloadDirectory,
       autoFolderPerAlbum: settings.autoFolderPerAlbum,
       useFallbackName: override.useFallbackName ?? false,
+      ...(model.id === "civitai"
+        ? {
+            useModelVariantAsGalleryName:
+              override.useModelVariantAsGalleryName ??
+              DEFAULT_SETTINGS.hosters.civitai.useModelVariantAsGalleryName ??
+              true,
+            skipFolderWhenSingleImage:
+              override.skipFolderWhenSingleImage ??
+              DEFAULT_SETTINGS.hosters.civitai.skipFolderWhenSingleImage ??
+              true,
+          }
+        : {}),
     };
     document.dispatchEvent(new CustomEvent("__md_config__", { detail: JSON.stringify(config) }));
   }
 
   checkAndTrigger();
+
+  browser.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName !== "local") return;
+    settings = applyStorageChanges(settings, changes);
+    // Civitai's activate() updates its config without replacing its collector,
+    // button, or active job. Re-send through the existing world bridge so the
+    // next click uses saved settings even if this SPA tab has not navigated.
+    if (matchPage(location.href, location.pathname)?.model.id === "civitai") {
+      checkAndTrigger(true);
+    }
+  });
 
   // Poll for SPA location changes
   setInterval(() => {

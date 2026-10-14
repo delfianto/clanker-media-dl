@@ -12,6 +12,8 @@ export type HosterOverride = {
   redirectRules: RedirectRule[] | null; // null = "use model defaults"
   cssOverrides: string; // empty string = none
   useFallbackName?: boolean; // imagebam: use file ID when filename is UUID/mojibake
+  useModelVariantAsGalleryName?: boolean; // civitai: selected model version pill as folder name
+  skipFolderWhenSingleImage?: boolean; // civitai: one-file carousel goes directly to Downloads
 };
 
 export type Settings = {
@@ -46,4 +48,6 @@ export type MDConfig = {
   downloadDirectory: string;
   autoFolderPerAlbum: boolean;
   useFallbackName?: boolean;
+  useModelVariantAsGalleryName?: boolean;
+  skipFolderWhenSingleImage?: boolean;
 };

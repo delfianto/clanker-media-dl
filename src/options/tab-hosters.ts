@@ -3,6 +3,7 @@ import type { HosterModel, RedirectRule } from "../types/hoster";
 import { ALL_MODELS, getModel } from "../hosts/index";
 import { $, el, toast, clone } from "./dom";
 import { displayRules, groupCount, isValidRegex, maxTemplateRef } from "./rules-helpers";
+import { DEFAULT_SETTINGS } from "../settings/schema";
 
 export function renderSidebar(
   settings: Settings,
@@ -59,11 +60,50 @@ export function renderPanel(
     ...(model.galleryConfig?.isBizarreName
       ? [renderFallbackNameSection(model, override, persist)]
       : []),
+    ...(model.id === "civitai" ? [renderCivitaiFolderSection(override, persist)] : []),
     renderRulesSection(model, settings, override, persist, persistSoon, () =>
       renderPanel(selected, settings, persist, persistSoon, onUpdateSidebar),
     ),
     renderCssSection(model, selected, settings, override, persist, persistSoon, onUpdateSidebar),
   );
+}
+
+function renderCivitaiFolderSection(override: HosterOverride, persist: () => void): HTMLElement {
+  const defaults = DEFAULT_SETTINGS.hosters.civitai;
+  const fields = [
+    {
+      key: "useModelVariantAsGalleryName" as const,
+      label: "Use model variant as gallery name (folder)",
+      hint: "Use the selected version pill, such as v3.0 FP16. Fall back to the carousel ID when unavailable.",
+    },
+    {
+      key: "skipFolderWhenSingleImage" as const,
+      label: "Skip folder generation when single image",
+      hint: "Save a carousel containing one file directly in your browser's Downloads folder, bypassing the download directory and gallery folder.",
+    },
+  ];
+  return el("section", {}, [
+    el("h3", { textContent: "Carousel folders" }),
+    ...fields.map(({ key, label, hint }) => {
+      const toggle = el("input", {
+        type: "checkbox",
+        checked: override[key] ?? defaults[key] ?? true,
+      });
+      toggle.addEventListener("change", () => {
+        override[key] = toggle.checked;
+        persist();
+      });
+      return el("div", { className: "settings-field" }, [
+        el("div", {}, [
+          el("div", { className: "settings-label", textContent: label }),
+          el("div", { className: "settings-hint", textContent: hint }),
+        ]),
+        el("label", { className: "hoster-toggle" }, [
+          el("span", { className: "switch" }, [toggle, el("span", { className: "slider" })]),
+        ]),
+      ]);
+    }),
+  ]);
 }
 
 function renderFallbackNameSection(
